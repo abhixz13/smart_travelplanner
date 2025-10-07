@@ -124,9 +124,9 @@ class ItineraryPlannerSystem:
             # Handle the selection
             updated_state = handle_user_selection(state, token)
             
-            # Run graph with updated state
+            # Run graph with updated state and increased recursion limit
             logger.info("Re-invoking graph after user selection")
-            final_state = self.graph.invoke(updated_state)
+            final_state = self.graph.invoke(updated_state, config={"recursion_limit": 50})
             
             # Store updated state
             self.sessions[thread_id] = final_state
