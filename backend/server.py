@@ -289,17 +289,39 @@ async def get_session(thread_id: str):
 @app.get("/api/sessions", response_model=List[SessionInfo])
 async def list_sessions():
     """
-    List all user sessions.
-    
-    TODO: Backend Integration Points
-    - Query all sessions from Supabase
-    - Filter by user_id (requires authentication)
-    - Paginate results for large datasets
+    List all user sessions from Supabase.
     """
     try:
         sessions_list = []
         
-        # Get from mock database
+        # Get from Supabase if available
+        if USE_SUPABASE and db:
+            try:
+                db_sessions = db.list_sessions(limit=100)
+                
+                for session in db_sessions:
+                    # Parse metadata if it's a string
+                    metadata = session.get('metadata', {})
+                    if isinstance(metadata, str):
+                        import json
+                        metadata = json.loads(metadata)
+                    
+                    sessions_list.append(SessionInfo(
+                        thread_id=session.get('thread_id', ''),
+                        created_at=session.get('created_at', ''),
+                        last_active=session.get('last_active', ''),
+                        message_count=len(session.get('messages', [])),
+                        has_itinerary=session.get('current_itinerary') is not None
+                    ))
+                
+                logger.info(f"✅ Retrieved {len(sessions_list)} sessions from Supabase")
+                return sessions_list
+                
+            except Exception as db_error:
+                logger.error(f"⚠️  Supabase error: {str(db_error)}")
+                # Fall through to in-memory fallback
+        
+        # Fallback: Get from in-memory database
         for thread_id, session_data in sessions_db.items():
             sessions_list.append(SessionInfo(
                 thread_id=thread_id,
