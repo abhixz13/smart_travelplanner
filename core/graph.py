@@ -5,7 +5,7 @@ Defines the flow between nodes and conditional routing logic.
 
 import logging
 from typing import Literal
-from langgraph.graph import StateGraph, END, CompiledStateGraph
+from langgraph.graph import StateGraph, END
 
 from core.state import GraphState
 from core.router import router_node
