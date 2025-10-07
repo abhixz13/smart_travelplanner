@@ -101,11 +101,13 @@ class SessionInfo(BaseModel):
 
 @app.get("/")
 async def root():
-    """Health check endpoint."""
+    """Health check endpoint with database status."""
     return {
         "status": "online",
         "service": "AI Travel Planning API",
-        "version": "1.0.0",
+        "version": "2.0.0 (Supabase)",
+        "database": "Supabase PostgreSQL" if USE_SUPABASE else "In-Memory (Fallback)",
+        "database_status": "connected" if (USE_SUPABASE and db) else "fallback",
         "timestamp": datetime.now().isoformat()
     }
 
