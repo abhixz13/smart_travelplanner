@@ -58,9 +58,9 @@ class ItineraryPlannerSystem:
             from langchain_core.messages import HumanMessage
             state["messages"].append(HumanMessage(content=query))
             
-            # Run the state graph
+            # Run the state graph with increased recursion limit
             logger.info("Invoking state graph execution")
-            final_state = self.graph.invoke(state)
+            final_state = self.graph.invoke(state, config={"recursion_limit": 50})
             
             # Store updated state
             self.sessions[thread_id] = final_state
