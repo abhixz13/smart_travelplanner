@@ -194,13 +194,7 @@ async def process_chat(request: ChatRequest):
 async def handle_suggestion(request: SuggestionRequest):
     """
     Handle user selection of a tokenized suggestion (A1, A2, A3, etc.).
-    
-    This triggers the corresponding agent action and returns updated results.
-    
-    TODO: Backend Integration Points
-    - Log suggestion selections for analytics
-    - Track user behavior patterns
-    - Store action results in database
+    Now with Supabase persistent storage!
     """
     try:
         logger.info(f"Handling suggestion: token={request.token}, thread_id={request.thread_id}")
@@ -210,20 +204,39 @@ async def handle_suggestion(request: SuggestionRequest):
             thread_id=request.thread_id
         )
         
-        # Extract current itinerary
+        # Extract current itinerary and messages
         current_itinerary = None
+        messages = []
         if request.thread_id in planner_system.sessions:
             session_state = planner_system.sessions[request.thread_id]
             current_itinerary = session_state.get("current_itinerary")
+            messages = [{"type": msg.type, "content": msg.content} for msg in session_state.get("messages", [])]
         
-        # Update session in mock database
-        # TODO: Replace with Supabase update
-        if request.thread_id in sessions_db:
-            sessions_db[request.thread_id].update({
-                "last_active": datetime.now().isoformat(),
-                "last_action": request.token,
-                "has_itinerary": current_itinerary is not None
-            })
+        # Update session in Supabase or in-memory
+        if USE_SUPABASE and db:
+            try:
+                db.update_session(request.thread_id, {
+                    "messages": messages,
+                    "current_itinerary": current_itinerary,
+                    "metadata": {"last_action": request.token}
+                })
+                logger.info(f"✅ Session updated in Supabase: {request.thread_id}")
+                
+                # Save itinerary if updated
+                if current_itinerary:
+                    db.save_itinerary(request.thread_id, current_itinerary)
+                    
+            except Exception as db_error:
+                logger.error(f"⚠️  Supabase error (non-fatal): {str(db_error)}")
+        
+        # Fallback: Update in-memory dict
+        if not USE_SUPABASE or not db:
+            if request.thread_id in sessions_db:
+                sessions_db[request.thread_id].update({
+                    "last_active": datetime.now().isoformat(),
+                    "last_action": request.token,
+                    "has_itinerary": current_itinerary is not None
+                })
         
         return ChatResponse(
             response=result.get("response", "No response generated"),
