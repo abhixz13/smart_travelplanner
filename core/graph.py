@@ -116,7 +116,7 @@ def route_after_reasoning(state: GraphState) -> Literal["router", "end"]:
         return "end"
 
 
-def build_graph() -> CompiledStateGraph:
+def build_graph():
     """
     Build and compile the state graph for the itinerary planner.
     
