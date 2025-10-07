@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plane, Clock, DollarSign, Users } from 'lucide-react';
+import { Plane, Clock, Users } from 'lucide-react';
 
 const FlightResults = ({ flights }) => {
   if (!flights || flights.length === 0) return null;
