@@ -1,0 +1,136 @@
+# AI-First Smart Itinerary Planner Configuration
+# Environment variables take precedence over these settings
+
+# LLM Configuration
+llm:
+  model: "gpt-4"  # or "gpt-3.5-turbo", "claude-3-opus-20240229"
+  temperature: 0.7
+  max_tokens: 2000
+  fallback_model: "gpt-3.5-turbo"
+
+# API Keys (prefer environment variables)
+api_keys:
+  openai: "${OPENAI_API_KEY}"
+  
+  # Future integrations (placeholder for MVP)
+  amadeus: "${AMADEUS_API_KEY}"
+  booking: "${BOOKING_API_KEY}"
+  viator: "${VIATOR_API_KEY}"
+  google_places: "${GOOGLE_PLACES_API_KEY}"
+
+# Database Configuration (Supabase for production)
+database:
+  supabase_url: "${SUPABASE_URL}"
+  supabase_key: "${SUPABASE_KEY}"
+  
+  # Tables (to be created in production)
+  tables:
+    users: "users"
+    itineraries: "itineraries"
+    user_sessions: "user_sessions"
+    plans: "plans"
+    tool_cache: "tool_cache"
+
+# System Settings
+system:
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  max_retries: 3
+  timeout: 30
+  cache_ttl: 3600  # Cache time-to-live in seconds
+
+# Agent Settings
+agents:
+  planner:
+    enabled: true
+    max_steps: 10
+  
+  flight:
+    enabled: true
+    mock_data: true  # Set to false when real API is integrated
+  
+  hotel:
+    enabled: true
+    mock_data: true
+  
+  activity:
+    enabled: true
+    mock_data: true
+  
+  itinerary:
+    enabled: true
+    max_days: 30
+
+# Tool Settings
+tools:
+  flight_search:
+    provider: "mock"  # Options: mock, amadeus, skyscanner
+    cache_results: true
+  
+  hotel_search:
+    provider: "mock"  # Options: mock, booking, expedia
+    cache_results: true
+  
+  activity_search:
+    provider: "mock"  # Options: mock, viator, getyourguide
+    cache_results: true
+
+# Budget Ranges (USD per day)
+budget_ranges:
+  budget:
+    min: 50
+    max: 100
+  mid-range:
+    min: 100
+    max: 250
+  luxury:
+    min: 250
+    max: 1000
+
+# Defaults
+defaults:
+  duration_days: 7
+  travelers: 1
+  budget: "mid-range"
+  interests: ["culture", "food", "sightseeing"]
+
+# Feature Flags
+features:
+  enable_follow_up_suggestions: true
+  enable_reasoning_validation: true
+  enable_cost_optimization: true
+  enable_real_time_updates: false  # For production
+  enable_booking: false  # For production
+
+# Production Integration Notes
+# ============================
+# TODO: Replace mock data with real integrations:
+# 
+# 1. Flight Search:
+#    - Amadeus Flight Offers Search API
+#    - Skyscanner API
+#    - Store results in Supabase tool_cache table
+# 
+# 2. Hotel Search:
+#    - Booking.com API
+#    - Expedia Rapid API
+#    - Cache results for 1 hour
+# 
+# 3. Activity Search:
+#    - Viator API
+#    - GetYourGuide API
+#    - Google Places API for POIs
+# 
+# 4. Database Schema (Supabase):
+#    - users: user profiles and preferences
+#    - itineraries: saved trip plans
+#    - user_sessions: conversation state persistence
+#    - plans: execution plans with step tracking
+#    - tool_cache: cached API results
+# 
+# 5. Authentication:
+#    - Implement user authentication
+#    - Link sessions to user accounts
+# 
+# 6. Payment Integration:
+#    - Stripe for payments
+#    - Booking confirmation workflows
