@@ -22,6 +22,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import ItineraryPlannerSystem
 from utils.logging_config import setup_logging
 
+# Try to import database module
+try:
+    from database import get_db, SupabaseDB
+    USE_SUPABASE = True
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.info("✅ Supabase database module loaded")
+except Exception as e:
+    USE_SUPABASE = False
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.warning(f"⚠️  Supabase not available, using in-memory storage: {str(e)}")
+
 # Initialize logging
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -29,8 +40,8 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(
     title="AI Travel Planning API",
-    description="AI-first smart itinerary planner with multi-agent orchestration",
-    version="1.0.0"
+    description="AI-first smart itinerary planner with multi-agent orchestration with Supabase",
+    version="2.0.0"
 )
 
 # Configure CORS
@@ -45,12 +56,18 @@ app.add_middleware(
 # Initialize the planning system
 planner_system = ItineraryPlannerSystem()
 
-# In-memory session storage (MVP)
-# TODO: Replace with Supabase/PostgreSQL for production
-# - Store sessions in 'user_sessions' table with thread_id as key
-# - Persist state as JSON in 'state' column
-# - Add user authentication and link sessions to user_id
+# Initialize database (Supabase or fallback to in-memory)
+db: Optional[SupabaseDB] = None
 sessions_db: Dict[str, Dict[str, Any]] = {}
+
+if USE_SUPABASE:
+    try:
+        db = get_db()
+        logger.info("✅ Connected to Supabase database")
+    except Exception as e:
+        logger.error(f"❌ Failed to connect to Supabase: {str(e)}")
+        logger.info("📝 Falling back to in-memory storage")
+        USE_SUPABASE = False
 
 
 # Pydantic models for request/response validation
