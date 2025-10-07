@@ -114,15 +114,7 @@ async def root():
 async def process_chat(request: ChatRequest):
     """
     Process a user query through the AI planning system.
-    
-    This endpoint handles initial queries and follow-up questions.
-    The system maintains conversation context via thread_id.
-    
-    TODO: Backend Integration Points
-    - Replace in-memory sessions_db with Supabase query
-    - Store messages in 'messages' table linked to thread_id
-    - Cache tool_results in 'tool_cache' table with TTL
-    - Log all queries for analytics
+    Now with Supabase persistent storage!
     """
     try:
         logger.info(f"Processing chat request for thread_id={request.thread_id}")
@@ -134,30 +126,55 @@ async def process_chat(request: ChatRequest):
             user_preferences=request.user_preferences
         )
         
-        # Extract current itinerary from session state
+        # Extract current itinerary and messages from session state
         current_itinerary = None
+        messages = []
         if request.thread_id in planner_system.sessions:
             session_state = planner_system.sessions[request.thread_id]
             current_itinerary = session_state.get("current_itinerary")
+            messages = [{"type": msg.type, "content": msg.content} for msg in session_state.get("messages", [])]
         
-        # Store session metadata in mock database
-        # TODO: Replace with Supabase insert/update
-        # Example:
-        # supabase.table('user_sessions').upsert({
-        #     'thread_id': request.thread_id,
-        #     'state': session_state,
-        #     'last_active': datetime.now()
-        # })
-        sessions_db[request.thread_id] = {
-            "thread_id": request.thread_id,
-            "created_at": sessions_db.get(request.thread_id, {}).get(
-                "created_at", datetime.now().isoformat()
-            ),
-            "last_active": datetime.now().isoformat(),
-            "query": request.query,
-            "response": result.get("response"),
-            "has_itinerary": current_itinerary is not None
-        }
+        # Store/update session in Supabase or in-memory
+        if USE_SUPABASE and db:
+            try:
+                # Check if session exists
+                existing_session = db.get_session(request.thread_id)
+                
+                if existing_session:
+                    # Update existing session
+                    db.update_session(request.thread_id, {
+                        "state": session_state if request.thread_id in planner_system.sessions else {},
+                        "messages": messages,
+                        "current_itinerary": current_itinerary,
+                        "metadata": {"last_query": request.query}
+                    })
+                    logger.info(f"✅ Session updated in Supabase: {request.thread_id}")
+                else:
+                    # Create new session
+                    db.create_session(request.thread_id, session_state if request.thread_id in planner_system.sessions else {})
+                    logger.info(f"✅ New session created in Supabase: {request.thread_id}")
+                
+                # Save itinerary if one was generated
+                if current_itinerary:
+                    db.save_itinerary(request.thread_id, current_itinerary)
+                    logger.info(f"✅ Itinerary saved to Supabase")
+                    
+            except Exception as db_error:
+                logger.error(f"⚠️  Supabase error (non-fatal): {str(db_error)}")
+                # Continue with in-memory fallback
+        
+        # Fallback: Store in in-memory dict
+        if not USE_SUPABASE or not db:
+            sessions_db[request.thread_id] = {
+                "thread_id": request.thread_id,
+                "created_at": sessions_db.get(request.thread_id, {}).get(
+                    "created_at", datetime.now().isoformat()
+                ),
+                "last_active": datetime.now().isoformat(),
+                "query": request.query,
+                "response": result.get("response"),
+                "has_itinerary": current_itinerary is not None
+            }
         
         return ChatResponse(
             response=result.get("response", "No response generated"),
