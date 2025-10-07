@@ -8,5 +8,8 @@ pydantic>=2.0.0
 # CORS Support
 python-multipart>=0.0.6
 
+# Database
+supabase>=2.0.0
+
 # Import parent dependencies
 # Note: All LangGraph and AI dependencies are in /app/requirements.txt
