@@ -11,6 +11,10 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 # Add parent directory to path to import main system
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
