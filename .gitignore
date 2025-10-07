@@ -66,3 +66,7 @@ secrets/
 # OS
 Thumbs.db
 .DS_Store
+-e 
+# Environment files
+*.env
+*.env.*
