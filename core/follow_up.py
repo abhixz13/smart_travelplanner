@@ -30,6 +30,11 @@ def generate_follow_up_suggestions(state: GraphState) -> Dict[str, Any]:
     logger.info("Generating follow-up suggestions")
     
     try:
+        # Check if in preplanner phase - if so, generate destination selection tokens
+        metadata = state.get("metadata", {})
+        if metadata.get("preplanner_phase", False):
+            return generate_destination_suggestions(state)
+        
         config = get_config()
         llm = ChatOpenAI(
             model=config["llm"]["model"],
