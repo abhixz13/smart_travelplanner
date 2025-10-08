@@ -1,6 +1,7 @@
 """
 Flight Agent: Handles flight search and booking inquiries.
 Specialized agent for flight-related operations.
+Integrates with Amadeus API for real flight data.
 """
 
 import logging
@@ -10,6 +11,17 @@ from langchain_core.messages import AIMessage
 
 from core.state import GraphState
 from utils.config import get_config
+
+# Try to import Amadeus client (falls back to mock if unavailable)
+try:
+    from utils.amadeus_client import get_amadeus_client
+    AMADEUS_AVAILABLE = True
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.info("✅ Amadeus API client available")
+except Exception as e:
+    AMADEUS_AVAILABLE = False
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.warning(f"⚠️ Amadeus API unavailable, using mock data: {e}")
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +71,8 @@ def execute_flight_search(state: GraphState, params: Dict[str, Any]) -> Dict[str
     """
     Execute flight search with given parameters.
     
-    NOTE: This uses MOCK DATA for MVP. In production, integrate with:
-    - Amadeus Flight Search API
-    - Skyscanner API
-    - Google Flights API
-    - Store results in Supabase for persistence
+    Now integrated with Amadeus API for real flight data!
+    Falls back to mock data if Amadeus API fails.
     
     Args:
         state: Current graph state
@@ -74,19 +83,65 @@ def execute_flight_search(state: GraphState, params: Dict[str, Any]) -> Dict[str
     """
     logger.info(f"Executing flight search: {params}")
     
-    # MOCK DATA - Replace with real API calls
-    mock_flights = generate_mock_flights(
-        origin=params.get("origin", "SFO"),
-        destination=params.get("destination", "NRT"),
-        departure_date=params.get("departure_date"),
-        return_date=params.get("return_date"),
-        passengers=params.get("passengers", 1)
-    )
+    origin = params.get("origin", "SFO")
+    destination = params.get("destination", "NRT")
+    departure_date = params.get("departure_date")
+    return_date = params.get("return_date")
+    passengers = params.get("passengers", 1)
     
-    logger.info(f"Found {len(mock_flights)} flight options (MOCK DATA)")
+    # Try Amadeus API first
+    if AMADEUS_AVAILABLE:
+        try:
+            amadeus = get_amadeus_client(use_production=False)  # Use test API
+            
+            logger.info(f"🔍 Searching Amadeus API: {origin} → {destination}")
+            
+            result = amadeus.search_flights(
+                origin=origin,
+                destination=destination,
+                departure_date=departure_date,
+                return_date=return_date,
+                adults=passengers,
+                max_results=10
+            )
+            
+            if result.get("success") and result.get("offers"):
+                # Format Amadeus offers
+                formatted_flights = []
+                dictionaries = result.get("dictionaries", {})
+                
+                for offer in result["offers"][:10]:  # Limit to 10
+                    formatted = amadeus.format_flight_offer(offer, dictionaries)
+                    if formatted:
+                        formatted_flights.append(formatted)
+                
+                logger.info(f"✅ Found {len(formatted_flights)} real flights from Amadeus")
+                
+                return {
+                    "flights": formatted_flights,
+                    "source": "amadeus_api",
+                    "search_params": params,
+                    "timestamp": datetime.now().isoformat()
+                }
+            else:
+                logger.warning(f"Amadeus API returned no results: {result.get('error')}")
+                
+        except Exception as e:
+            logger.error(f"❌ Amadeus API error: {e}, falling back to mock data")
+    
+    # Fallback to MOCK DATA
+    logger.info("Using mock flight data (Amadeus unavailable or failed)")
+    mock_flights = generate_mock_flights(
+        origin=origin,
+        destination=destination,
+        departure_date=departure_date,
+        return_date=return_date,
+        passengers=passengers
+    )
     
     return {
         "flights": mock_flights,
+        "source": "mock_data",
         "search_params": params,
         "timestamp": datetime.now().isoformat()
     }
