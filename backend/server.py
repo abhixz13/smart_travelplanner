@@ -112,6 +112,16 @@ async def root():
     }
 
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker and load balancers."""
+    return {
+        "status": "healthy", 
+        "timestamp": datetime.now().isoformat(),
+        "service": "itinerary-planner-backend"
+    }
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def process_chat(request: ChatRequest):
     """
