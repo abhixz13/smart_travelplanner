@@ -118,7 +118,7 @@ Decision rules:
         decision = response.content.strip().upper()
         
         # Validate decision
-        valid_agents = {"PLANNER", "FLIGHT", "HOTEL", "ACTIVITY", "ITINERARY", "REASONING", "END"}
+        valid_agents = {"DESTINATION_PLANNER", "PLANNER", "FLIGHT", "HOTEL", "ACTIVITY", "ITINERARY", "REASONING", "END"}
         if decision not in valid_agents:
             logger.warning(f"Invalid routing decision: {decision}, defaulting to PLANNER")
             decision = "PLANNER"
