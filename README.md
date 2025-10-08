@@ -16,6 +16,10 @@ itinerary-planner/
 ├── main.py                          # System orchestrator and entry point
 ├── config.yaml                      # Configuration file
 ├── requirements.txt                 # Python dependencies
+├── .env                             # Environment variables (ignored by Git)
+├── .env.example                     # Example environment variables
+├── test_destination_planner.py      # Tests for destination planning agent
+├── test_integration_simple.py       # Simple integration tests
 │
 ├── core/                            # Core orchestration components
 │   ├── state.py                     # State definitions and data structures
@@ -30,26 +34,53 @@ itinerary-planner/
 │   ├── flight_agent.py             # Flight search agent
 │   ├── hotel_agent.py              # Hotel search agent
 │   ├── activity_agent.py           # Activity recommendation agent
-│   └── itinerary_agent.py          # Itinerary composition agent
+│   ├── itinerary_agent.py          # Itinerary composition agent
+│   └── Destination_planner.py      # Destination discovery and recommendation agent (uses Tavily)
+│
+├── backend/                         # Backend server and database integration
+│   ├── server.py                    # FastAPI server
+│   ├── database.py                  # Supabase database wrapper
+│   └── schema.sql                   # Supabase database schema
+│
+├── frontend/                        # React frontend application
+│   ├── public/                      # Public assets
+│   ├── src/                         # React source code
+│   ├── package.json                 # Node.js dependencies
+│   └── yarn.lock                    # Yarn lock file
 │
 └── utils/                           # Utilities and helpers
     ├── config.py                    # Configuration management
-    └── logging_config.py            # Logging setup
+    ├── logging_config.py            # Logging setup
+    └── amadeus_client.py            # Amadeus API client
 🚀 Quick Start
 Prerequisites
 Python 3.10+
 OpenAI API key
+Amadeus API Key and Secret
+Supabase Project URL, Anon Key, and Service Role Key
+Tavily API Key (for destination planning)
 Installation
 Clone the repository:
 bash
 git clone <repository-url>
 cd itinerary-planner
-Install dependencies:
+Install backend dependencies:
 bash
 pip install -r requirements.txt
+# (Optional) Install frontend dependencies:
+# cd frontend && npm install # or yarn install
 Set up environment variables:
+Create a .env file in the root directory and add your API keys and Supabase credentials:
 bash
-export OPENAI_API_KEY="your-api-key-here"
+OPENAI_API_KEY="your-openai-api-key-here"
+AMADEUS_API_KEY="your-amadeus-api-key-here"
+AMADEUS_API_SECRET="your-amadeus-api-secret-here"
+SUPABASE_URL="https://your-supabase-project-id.supabase.co"
+SUPABASE_KEY="your-supabase-service-role-key-here"
+SUPABASE_ANON_KEY="your-supabase-anon-key-here" # Used in frontend
+TAVILY_API_KEY="your-tavily-api-key-here" # For destination planning
+
+# Make sure to add .env to your .gitignore to prevent accidental exposure!
 Run the demo:
 bash
 python main.py
@@ -102,11 +133,11 @@ Entry → Router
          ↓
     [Conditional Routing]
          ↓
-    ┌────┴────┬────────┬─────────┬──────────┐
-    ↓         ↓        ↓         ↓          ↓
- Planner  Flight   Hotel   Activity  Itinerary
-    ↓         ↓        ↓         ↓          ↓
-    └────┬────┴────────┴─────────┴──────────┘
+    ┌────┴────┬────────┬─────────┬───────────┬────────────────┐
+    ↓         ↓        ↓         ↓           ↓                ↓
+ Planner  Flight   Hotel   Activity  Itinerary  Destination Planner
+    ↓         ↓        ↓         ↓           ↓                ↓
+    └────┬────┴────────┴─────────┴───────────┴────────────────┘
          ↓
      Reasoning
          ↓
@@ -122,6 +153,7 @@ Planner Execution: Executes plan steps, invokes specialized agents
 Reasoning: Validates coherence, suggests next actions
 Specialized Agents: Handle domain-specific tasks (flights, hotels, etc.)
 Follow-up: Generates dynamic suggestions for conversation continuation
+Destination Planner: Discovers and recommends destinations based on user preferences.
 State Structure
 python
 GraphState = {
@@ -144,14 +176,10 @@ Feature flags
 Environment variables override config file settings.
 
 🧪 MVP vs Production
-Current (MVP)
-✅ Mock data for flights, hotels, activities
-✅ In-memory state storage
-✅ Local execution
-✅ Basic error handling
-Production Roadmap
-🔲 Real API integrations (Amadeus, Booking.com, Viator)
-🔲 Supabase PostgreSQL for persistent storage
+Current (Production-Ready Features)
+✅ Real API integrations (Amadeus for Flights, Hotels, Activities)
+✅ Supabase PostgreSQL for persistent storage
+✅ Frontend application (React) for user interface
 🔲 User authentication and session management
 🔲 Caching layer (Redis)
 🔲 Background tasks (Celery)
@@ -159,33 +187,35 @@ Production Roadmap
 🔲 Booking confirmations
 🔲 Real-time updates
 🔲 Cost optimization algorithms
-🗄️ Database Schema (Production)
-Supabase Tables
-users
+🗄️ Database Schema (Supabase PostgreSQL)
+Tables:
 
-id, email, preferences, created_at
-itineraries
-
-id, user_id, destination, dates, days (JSON), status, created_at
 user_sessions
 
-id, user_id, thread_id, state (JSON), last_active
+id, user_id, thread_id, state (JSON), last_active, created_at, updated_at
+itineraries
+
+id, session_id, user_id, destination, start_date, end_date, duration_days, itinerary_details (JSON), status, created_at, updated_at
 plans
 
-id, session_id, steps (JSON), executed_steps, created_at
+id, session_id, steps (JSON), executed_steps, current_step, status, created_at, updated_at
 tool_cache
 
-id, tool_name, params_hash, result (JSON), expires_at
-🔌 API Integrations (Production)
+id, tool_name, params_hash, result (JSON), expires_at, created_at
+🔌 API Integrations
 Flight Search
-Amadeus Flight Offers Search API: Real-time flight prices
+✅ Amadeus Flight Offers Search API: Real-time flight prices
 Skyscanner API: Alternative flight search
 Hotel Search
-Booking.com API: Hotel inventory
+✅ Amadeus Hotel List by City & Hotel Offers Search API: Real-time hotel inventory and pricing
+Booking.com API: Alternative hotel inventory
 Expedia Rapid API: Alternative accommodation
 Activities
-Viator API: Tours and activities
+✅ Amadeus Tours and Activities API: Discover events and activities
+Viator API: Alternative tours and activities
 GetYourGuide API: Alternative activities
+Destination Planning
+✅ Tavily Search API: AI-optimized search for destination discovery and research
 Google Places API: POI information
 📝 Logging
 Logs are output to console (INFO) and optionally to file (DEBUG).
@@ -200,11 +230,14 @@ logger.debug("Detailed state: %s", state)
 logger.error("Error occurred", exc_info=True)
 🧪 Testing
 bash
-# Run tests (when implemented)
-pytest tests/
+# Run tests
+pytest
+
+# Run specific test files
+pytest test_destination_planner.py test_integration_simple.py
 
 # Run with coverage
-pytest --cov=. tests/
+pytest --cov=.
 🤝 Contributing
 Fork the repository
 Create a feature branch
@@ -224,5 +257,4 @@ For issues and questions:
 Open an issue on GitHub
 Check the documentation
 Review the code comments
-Note: This is an MVP implementation with mock data. For production deployment, integrate real APIs and implement proper data persistence, authentication, and error handling as outlined in the configuration and code comments.
 
