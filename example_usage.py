@@ -259,6 +259,48 @@ def example_8_export_itinerary():
         print()
 
 
+def example_9_destination_planner():
+    """Example 9: Using destination planner for uncertain travelers."""
+    print_section("Example 9: Destination Planner (Uncertain Destination)")
+    
+    planner = ItineraryPlannerSystem()
+    thread_id = "example_9"
+    
+    # User uncertain about destination
+    print("👤 USER: I want to travel for 7 days in the USA with my family.")
+    print("        We have 2 kids aged 4 and 7. I prefer not extreme weather")
+    print("        and family-friendly activities. I don't know where to go.\n")
+    
+    result = planner.process_query(
+        query="I want to travel for 7 days in the USA with my family. We have 2 kids aged 4 and 7. I prefer not extreme weather and family-friendly activities. I don't know where to go.",
+        thread_id=thread_id
+    )
+    
+    print_response(result)
+    print_suggestions(result.get("suggestions", []))
+    
+    # Simulate user selecting first destination (D1)
+    if result.get("suggestions") and any(s["token"].startswith("D") for s in result["suggestions"]):
+        print("👤 USER: [Selects D1]\n")
+        
+        follow_up = planner.handle_suggestion_selection("D1", thread_id=thread_id)
+        print_response(follow_up)
+        
+        # Check if destination was set
+        session = planner.sessions.get(thread_id)
+        if session:
+            destination = session.get("user_preferences", {}).get("destination")
+            print(f"📍 Destination Set: {destination}\n")
+            
+            # Show that planning can now proceed
+            print("👤 USER: Great! Now create a detailed itinerary.\n")
+            final_result = planner.process_query(
+                query="Great! Now create a detailed itinerary.",
+                thread_id=thread_id
+            )
+            print_response(final_result)
+
+
 def run_all_examples():
     """Run all examples in sequence."""
     examples = [
@@ -270,6 +312,7 @@ def run_all_examples():
         ("Advanced Preferences", example_6_advanced_preferences),
         ("Itinerary Modification", example_7_itinerary_modification),
         ("Export Itinerary", example_8_export_itinerary),
+        ("Destination Planner", example_9_destination_planner),
     ]
     
     print("\n" + "🚀"*40)
