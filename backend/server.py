@@ -8,10 +8,18 @@ import sys
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
+from main import ItineraryPlannerSystem
+from utils.logging_config import setup_logging
+
+# Initialize logging first
+setup_logging()
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
@@ -19,23 +27,6 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 # Add parent directory to path to import main system
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main import ItineraryPlannerSystem
-from utils.logging_config import setup_logging
-
-# Try to import database module
-try:
-    from database import get_db, SupabaseDB
-    USE_SUPABASE = True
-    logger_temp = logging.getLogger(__name__)
-    logger_temp.info("✅ Supabase database module loaded")
-except Exception as e:
-    USE_SUPABASE = False
-    logger_temp = logging.getLogger(__name__)
-    logger_temp.warning(f"⚠️  Supabase not available, using in-memory storage: {str(e)}")
-
-# Initialize logging
-setup_logging()
-logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -56,18 +47,31 @@ app.add_middleware(
 # Initialize the planning system
 planner_system = ItineraryPlannerSystem()
 
-# Initialize database (Supabase or fallback to in-memory)
+# Try to import SupabaseDB (falls back to in-memory if not configured)
+try:
+    from backend.database import SupabaseDB
+    SUPABASE_AVAILABLE = True
+    logger.info("✅ Supabase client available")
+except ImportError as e:
+    SUPABASE_AVAILABLE = False
+    print(f"⚠️ Supabase not available, using in-memory storage: {e}")
+except Exception as e:
+    SUPABASE_AVAILABLE = False
+    print(f"⚠️ Supabase client failed to initialize, using in-memory storage: {e}")
+
+
+# Initialize Supabase client if available
 db: Optional[SupabaseDB] = None
 sessions_db: Dict[str, Dict[str, Any]] = {}
 
-if USE_SUPABASE:
+if SUPABASE_AVAILABLE:
     try:
-        db = get_db()
+        db = SupabaseDB()
         logger.info("✅ Connected to Supabase database")
     except Exception as e:
         logger.error(f"❌ Failed to connect to Supabase: {str(e)}")
         logger.info("📝 Falling back to in-memory storage")
-        USE_SUPABASE = False
+        SUPABASE_AVAILABLE = False
 
 
 # Pydantic models for request/response validation
@@ -106,8 +110,8 @@ async def root():
         "status": "online",
         "service": "AI Travel Planning API",
         "version": "2.0.0 (Supabase)",
-        "database": "Supabase PostgreSQL" if USE_SUPABASE else "In-Memory (Fallback)",
-        "database_status": "connected" if (USE_SUPABASE and db) else "fallback",
+        "database": "Supabase PostgreSQL" if SUPABASE_AVAILABLE else "In-Memory (Fallback)",
+        "database_status": "connected" if (SUPABASE_AVAILABLE and db) else "fallback",
         "timestamp": datetime.now().isoformat()
     }
 
@@ -147,7 +151,7 @@ async def process_chat(request: ChatRequest):
             messages = [{"type": msg.type, "content": msg.content} for msg in session_state.get("messages", [])]
         
         # Store/update session in Supabase or in-memory
-        if USE_SUPABASE and db:
+        if SUPABASE_AVAILABLE and db:
             try:
                 # Check if session exists
                 existing_session = db.get_session(request.thread_id)
@@ -176,7 +180,7 @@ async def process_chat(request: ChatRequest):
                 # Continue with in-memory fallback
         
         # Fallback: Store in in-memory dict
-        if not USE_SUPABASE or not db:
+        if not SUPABASE_AVAILABLE or not db:
             sessions_db[request.thread_id] = {
                 "thread_id": request.thread_id,
                 "created_at": sessions_db.get(request.thread_id, {}).get(
@@ -225,7 +229,7 @@ async def handle_suggestion(request: SuggestionRequest):
             messages = [{"type": msg.type, "content": msg.content} for msg in session_state.get("messages", [])]
         
         # Update session in Supabase or in-memory
-        if USE_SUPABASE and db:
+        if SUPABASE_AVAILABLE and db:
             try:
                 db.update_session(request.thread_id, {
                     "messages": messages,
@@ -242,7 +246,7 @@ async def handle_suggestion(request: SuggestionRequest):
                 logger.error(f"⚠️  Supabase error (non-fatal): {str(db_error)}")
         
         # Fallback: Update in-memory dict
-        if not USE_SUPABASE or not db:
+        if not SUPABASE_AVAILABLE or not db:
             if request.thread_id in sessions_db:
                 sessions_db[request.thread_id].update({
                     "last_active": datetime.now().isoformat(),
@@ -307,7 +311,7 @@ async def list_sessions():
         sessions_list = []
         
         # Get from Supabase if available
-        if USE_SUPABASE and db:
+        if SUPABASE_AVAILABLE and db:
             try:
                 db_sessions = db.list_sessions(limit=100)
                 

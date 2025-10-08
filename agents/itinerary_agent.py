@@ -243,7 +243,7 @@ def format_itinerary_response(itinerary: Dict[str, Any]) -> str:
     ]
     
     days = itinerary.get("days", [])
-    for day in days[:3]:  # Show first 3 days in detail
+    for day in days:  # Show all days in detail
         response_parts.append(f"\n{'='*50}")
         response_parts.append(f"\n📅 Day {day['day_number']}: {day.get('date', 'TBD')}")
         response_parts.append(f"\n📍 {day.get('location', '')}")

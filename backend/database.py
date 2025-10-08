@@ -108,7 +108,8 @@ class SupabaseDB:
             if 'state' in updates:
                 updates['state'] = json.dumps(updates['state']) if isinstance(updates['state'], dict) else updates['state']
             if 'messages' in updates:
-                updates['messages'] = json.dumps(updates['messages']) if isinstance(updates['messages'], list) else updates['messages']
+                converted_messages = self._convert_messages_to_dict(updates['messages'])
+                updates['messages'] = json.dumps(converted_messages) if isinstance(converted_messages, list) else converted_messages
             if 'current_itinerary' in updates and updates['current_itinerary']:
                 updates['current_itinerary'] = json.dumps(updates['current_itinerary']) if isinstance(updates['current_itinerary'], dict) else updates['current_itinerary']
             if 'tool_results' in updates:
@@ -327,6 +328,23 @@ class SupabaseDB:
         except Exception as e:
             logger.error(f"Error cleaning cache: {str(e)}")
             return 0
+
+    def _convert_messages_to_dict(self, messages: List[Any]) -> List[Dict[str, Any]]:
+        """Convert LangChain message objects to serializable dictionaries."""
+        if not messages:
+            return []
+        
+        # Check if first message is a LangChain message object
+        first_msg = messages[0]
+        if hasattr(first_msg, 'type') and hasattr(first_msg, 'content'):
+            return [{"type": msg.type, "content": msg.content} for msg in messages]
+        
+        # If already dictionaries, return as-is
+        if isinstance(first_msg, dict) and 'type' in first_msg and 'content' in first_msg:
+            return messages
+            
+        # Fallback: try to serialize as-is
+        return messages
 
 
 # Global database instance

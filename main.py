@@ -174,10 +174,11 @@ class ItineraryPlannerSystem:
     
     def _summarize_state(self, state: GraphState) -> Dict[str, Any]:
         """Create a summary of current state for debugging/UI."""
+        plan = state.get("plan", {})
         return {
             "message_count": len(state["messages"]),
-            "has_plan": state.get("plan") is not None,
-            "executed_steps": len([s for s in state.get("plan", {}).get("steps", []) 
+            "has_plan": plan is not None,
+            "executed_steps": len([s for s in plan.get("steps", []) 
                                   if s.get("executed", False)]),
             "current_itinerary": bool(state.get("current_itinerary")),
             "last_agent": state.get("next_agent", "none")
