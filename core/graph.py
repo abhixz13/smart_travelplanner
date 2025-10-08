@@ -9,6 +9,7 @@ from langgraph.graph import StateGraph, END
 
 from core.state import GraphState
 from core.router import router_node
+from core.destination_planner import preplanner_agent_node
 from agents.planner import planner_node
 from agents.planner_execution import planner_execution_node
 from agents.reasoning import reasoning_node
