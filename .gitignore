@@ -1,7 +1,13 @@
-# Environment Variables
+# Environment Variables - NEVER COMMIT THESE!
 .env
 .env.local
 .env.*.local
+*.env
+backend/.env
+frontend/.env
+**/.env
+.env.*
+!.env.example
 
 # Virtual Environment
 venv/
@@ -58,10 +64,17 @@ htmlcov/
 *.sqlite
 *.sqlite3
 
-# Secrets & API Keys
+# Secrets & API Keys - CRITICAL SECURITY
 secrets/
 *.pem
 *.key
+*_key.txt
+*_secret.txt
+api_keys.json
+credentials.json
+service-account.json
+.credentials/
+.secrets/
 
 # OS
 Thumbs.db
