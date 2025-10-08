@@ -41,6 +41,17 @@ system:
 
 # Agent Settings
 agents:
+  destination_planner:
+    enabled: true
+    max_recommendations: 5
+    use_tavily_research: true
+    scoring_weights:
+      weather: 0.25
+      family_friendly: 0.20
+      safety: 0.20
+      budget: 0.15
+      interests: 0.20
+  
   planner:
     enabled: true
     max_steps: 10
