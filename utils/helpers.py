@@ -5,8 +5,10 @@ Common functions used across multiple modules.
 
 import hashlib
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 from datetime import datetime, timedelta
+import time
+import functools
 
 
 def generate_id(prefix: str = "", length: int = 8) -> str:
@@ -434,6 +436,162 @@ class ResponseFormatter:
                 "pages": (total + per_page - 1) // per_page
             }
         }
+
+
+def time_execution(logger_name: str = None, level: str = "INFO") -> Callable:
+    """
+    Decorator to measure and log function execution time.
+    
+    Args:
+        logger_name: Name of logger to use (defaults to function module)
+        level: Log level (DEBUG, INFO, WARNING, ERROR)
+    
+    Returns:
+        Decorated function with timing
+    """
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs) -> Any:
+            import logging
+            
+            # Get appropriate logger
+            if logger_name:
+                logger = logging.getLogger(logger_name)
+            else:
+                # Use module name as logger
+                logger = logging.getLogger(func.__module__)
+            
+            # Start timer
+            start_time = time.perf_counter()
+            
+            try:
+                # Execute function
+                result = func(*args, **kwargs)
+                
+                # Calculate duration
+                end_time = time.perf_counter()
+                duration_ms = (end_time - start_time) * 1000
+                
+                # Log timing information
+                log_level = getattr(logging, level.upper())
+                logger.log(
+                    log_level,
+                    f"TIMING: {func.__name__} executed in {duration_ms:.2f}ms"
+                )
+                
+                return result
+                
+            except Exception as e:
+                # Log error with timing
+                end_time = time.perf_counter()
+                duration_ms = (end_time - start_time) * 1000
+                
+                logger.error(
+                    f"TIMING: {func.__name__} failed after {duration_ms:.2f}ms - {str(e)}"
+                )
+                raise
+                
+        return wrapper
+    return decorator
+
+
+def time_execution_async(logger_name: str = None, level: str = "INFO") -> Callable:
+    """
+    Decorator to measure and log async function execution time.
+    
+    Args:
+        logger_name: Name of logger to use (defaults to function module)
+        level: Log level (DEBUG, INFO, WARNING, ERROR)
+    
+    Returns:
+        Decorated async function with timing
+    """
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs) -> Any:
+            import logging
+            
+            # Get appropriate logger
+            if logger_name:
+                logger = logging.getLogger(logger_name)
+            else:
+                # Use module name as logger
+                logger = logging.getLogger(func.__module__)
+            
+            # Start timer
+            start_time = time.perf_counter()
+            
+            try:
+                # Execute async function
+                result = await func(*args, **kwargs)
+                
+                # Calculate duration
+                end_time = time.perf_counter()
+                duration_ms = (end_time - start_time) * 1000
+                
+                # Log timing information
+                log_level = getattr(logging, level.upper())
+                logger.log(
+                    log_level,
+                    f"TIMING: {func.__name__} executed in {duration_ms:.2f}ms"
+                )
+                
+                return result
+                
+            except Exception as e:
+                # Log error with timing
+                end_time = time.perf_counter()
+                duration_ms = (end_time - start_time) * 1000
+                
+                logger.error(
+                    f"TIMING: {func.__name__} failed after {duration_ms:.2f}ms - {str(e)}"
+                )
+                raise
+                
+        return wrapper
+    return decorator
+
+
+class ExecutionTimer:
+    """
+    Context manager for timing code blocks with detailed reporting.
+    """
+    
+    def __init__(self, name: str, logger_name: str = None, level: str = "INFO"):
+        self.name = name
+        self.logger_name = logger_name
+        self.level = level.upper()
+        self.start_time = None
+        self.end_time = None
+    
+    def __enter__(self):
+        self.start_time = time.perf_counter()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.end_time = time.perf_counter()
+        duration_ms = (self.end_time - self.start_time) * 1000
+        
+        import logging
+        logger = logging.getLogger(self.logger_name) if self.logger_name else logging.getLogger()
+        
+        if exc_type:
+            logger.error(
+                f"TIMING: {self.name} failed after {duration_ms:.2f}ms - {exc_val}"
+            )
+        else:
+            log_level = getattr(logging, self.level)
+            logger.log(
+                log_level,
+                f"TIMING: {self.name} completed in {duration_ms:.2f}ms"
+            )
+    
+    @property
+    def duration_ms(self) -> float:
+        """Get duration in milliseconds."""
+        if self.start_time and self.end_time:
+            return (self.end_time - self.start_time) * 1000
+        return 0.0
 
 
 # Example usage documentation

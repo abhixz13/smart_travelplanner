@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage
 
 from core.state import GraphState
 from utils.config import get_config
+from utils.helpers import time_execution
 
 # Try to import Amadeus client (falls back to mock if unavailable)
 try:
@@ -90,6 +91,7 @@ def convert_country_to_city(destination: str) -> str:
     return destination
 
 
+@time_execution()
 def flight_agent_node(state: GraphState) -> Dict[str, Any]:
     """
     Flight agent node for handling flight queries.

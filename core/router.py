@@ -10,10 +10,12 @@ from langchain_openai import ChatOpenAI
 
 from core.state import GraphState
 from utils.config import get_config
+from utils.helpers import time_execution
 
 logger = logging.getLogger(__name__)
 
 
+@time_execution()
 def router_node(state: GraphState) -> Dict[str, Any]:
     """
     Router node that determines which agent to invoke next.

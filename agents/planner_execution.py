@@ -13,10 +13,12 @@ from agents.flight_agent import execute_flight_search
 from agents.hotel_agent import execute_hotel_search
 from agents.activity_agent import execute_activity_search
 from agents.itinerary_agent import execute_itinerary_composition
+from utils.helpers import time_execution
 
 logger = logging.getLogger(__name__)
 
 
+@time_execution()
 def planner_execution_node(state: GraphState) -> Dict[str, Any]:
     """
     Execute the structured plan step by step.

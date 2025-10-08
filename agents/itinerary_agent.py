@@ -11,10 +11,12 @@ from langchain_openai import ChatOpenAI
 
 from core.state import GraphState, Itinerary, DayItinerary
 from utils.config import get_config
+from utils.helpers import time_execution
 
 logger = logging.getLogger(__name__)
 
 
+@time_execution()
 def itinerary_agent_node(state: GraphState) -> Dict[str, Any]:
     """
     Itinerary agent node for composing day-by-day plans.

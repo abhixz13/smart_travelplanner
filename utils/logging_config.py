@@ -29,7 +29,7 @@ def setup_logging(log_level: str = "INFO", log_file: str = None):
     # Remove existing handlers
     root_logger.handlers = []
     
-    # Create formatters
+    # Create formatters - timing messages will be prefixed with "TIMING:"
     detailed_formatter = logging.Formatter(
         fmt='%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'

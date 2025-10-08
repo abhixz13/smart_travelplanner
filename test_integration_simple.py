@@ -7,6 +7,8 @@ import os
 import sys
 sys.path.insert(0, '/app')
 
+import time
+
 # Set environment variables
 os.environ['TAVILY_API_KEY'] = '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'
 os.environ['OPENAI_API_KEY'] = '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'
@@ -199,6 +201,37 @@ def test_destination_selection():
         return False
 
 
+def test_timing_decorator():
+    """Test 6: Verify timing decorators work correctly."""
+    print("TEST 6: Testing timing decorators...")
+    try:
+        from utils.helpers import time_execution
+        
+        # Create a simple function to test
+        @time_execution()
+        def test_function():
+            time.sleep(0.1)  # Sleep for 100ms
+            return "success"
+        
+        # Call the function and verify it works
+        result = test_function()
+        
+        if result == "success":
+            print("   ✅ Timing decorator executed function successfully")
+            print("   ✅ Timing information should appear in logs")
+            print("✅ Timing decorator test passed\n")
+            return True
+        else:
+            print(f"   ⚠️  Unexpected result: {result}\n")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Timing decorator test failed: {e}\n")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 if __name__ == "__main__":
     print("\n" + "=" * 80)
     print("DESTINATION PLANNER INTEGRATION TESTS")
@@ -211,6 +244,7 @@ if __name__ == "__main__":
     results.append(("Router Detection", test_router_detection()))
     results.append(("Follow-up D-tokens", test_follow_up_logic()))
     results.append(("Destination Selection", test_destination_selection()))
+    results.append(("Timing Decorators", test_timing_decorator()))
     
     print("=" * 80)
     print("TEST SUMMARY")

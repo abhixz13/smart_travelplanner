@@ -11,10 +11,12 @@ from langchain_openai import ChatOpenAI
 
 from core.state import GraphState, ExecutionPlan, PlanStep, UserPreferences
 from utils.config import get_config
+from utils.helpers import time_execution
 
 logger = logging.getLogger(__name__)
 
 
+@time_execution()
 def planner_node(state: GraphState) -> Dict[str, Any]:
     """
     Planner node that orchestrates the planning workflow.

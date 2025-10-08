@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 
 from main import ItineraryPlannerSystem
 from utils.logging_config import setup_logging
+from utils.helpers import ExecutionTimer
 
 # Initialize logging first
 setup_logging()
@@ -135,72 +136,74 @@ async def process_chat(request: ChatRequest):
     try:
         logger.info(f"Processing chat request for thread_id={request.thread_id}")
         
-        # Process query through planner system
-        result = planner_system.process_query(
-            query=request.query,
-            thread_id=request.thread_id,
-            user_preferences=request.user_preferences
-        )
-        
-        # Extract current itinerary and messages from session state
-        current_itinerary = None
-        messages = []
-        if request.thread_id in planner_system.sessions:
-            session_state = planner_system.sessions[request.thread_id]
-            current_itinerary = session_state.get("current_itinerary")
-            messages = [{"type": msg.type, "content": msg.content} for msg in session_state.get("messages", [])]
-        
-        # Store/update session in Supabase or in-memory
-        if SUPABASE_AVAILABLE and db:
-            try:
-                # Check if session exists
-                existing_session = db.get_session(request.thread_id)
-                
-                if existing_session:
-                    # Update existing session
-                    db.update_session(request.thread_id, {
-                        "state": session_state if request.thread_id in planner_system.sessions else {},
-                        "messages": messages,
-                        "current_itinerary": current_itinerary,
-                        "metadata": {"last_query": request.query}
-                    })
-                    logger.info(f"✅ Session updated in Supabase: {request.thread_id}")
-                else:
-                    # Create new session
-                    db.create_session(request.thread_id, session_state if request.thread_id in planner_system.sessions else {})
-                    logger.info(f"✅ New session created in Supabase: {request.thread_id}")
-                
-                # Save itinerary if one was generated
-                if current_itinerary:
-                    db.save_itinerary(request.thread_id, current_itinerary)
-                    logger.info(f"✅ Itinerary saved to Supabase")
+        # Time the entire API request processing
+        with ExecutionTimer("api_chat_request", logger_name=__name__) as timer:
+            # Process query through planner system
+            result = planner_system.process_query(
+                query=request.query,
+                thread_id=request.thread_id,
+                user_preferences=request.user_preferences
+            )
+            
+            # Extract current itinerary and messages from session state
+            current_itinerary = None
+            messages = []
+            if request.thread_id in planner_system.sessions:
+                session_state = planner_system.sessions[request.thread_id]
+                current_itinerary = session_state.get("current_itinerary")
+                messages = [{"type": msg.type, "content": msg.content} for msg in session_state.get("messages", [])]
+            
+            # Store/update session in Supabase or in-memory
+            if SUPABASE_AVAILABLE and db:
+                try:
+                    # Check if session exists
+                    existing_session = db.get_session(request.thread_id)
                     
-            except Exception as db_error:
-                logger.error(f"⚠️  Supabase error (non-fatal): {str(db_error)}")
-                # Continue with in-memory fallback
-        
-        # Fallback: Store in in-memory dict
-        if not SUPABASE_AVAILABLE or not db:
-            sessions_db[request.thread_id] = {
-                "thread_id": request.thread_id,
-                "created_at": sessions_db.get(request.thread_id, {}).get(
-                    "created_at", datetime.now().isoformat()
-                ),
-                "last_active": datetime.now().isoformat(),
-                "query": request.query,
-                "response": result.get("response"),
-                "has_itinerary": current_itinerary is not None
-            }
-        
-        return ChatResponse(
-            response=result.get("response", "No response generated"),
-            suggestions=result.get("suggestions", []),
-            state_summary=result.get("state_summary", {}),
-            thread_id=result.get("thread_id", request.thread_id),
-            timestamp=result.get("timestamp", datetime.now().isoformat()),
-            current_itinerary=current_itinerary
-        )
-        
+                    if existing_session:
+                        # Update existing session
+                        db.update_session(request.thread_id, {
+                            "state": session_state if request.thread_id in planner_system.sessions else {},
+                            "messages": messages,
+                            "current_itinerary": current_itinerary,
+                            "metadata": {"last_query": request.query}
+                        })
+                        logger.info(f"✅ Session updated in Supabase: {request.thread_id}")
+                    else:
+                        # Create new session
+                        db.create_session(request.thread_id, session_state if request.thread_id in planner_system.sessions else {})
+                        logger.info(f"✅ New session created in Supabase: {request.thread_id}")
+                    
+                    # Save itinerary if one was generated
+                    if current_itinerary:
+                        db.save_itinerary(request.thread_id, current_itinerary)
+                        logger.info(f"✅ Itinerary saved to Supabase")
+                        
+                except Exception as db_error:
+                    logger.error(f"⚠️  Supabase error (non-fatal): {str(db_error)}")
+                    # Continue with in-memory fallback
+            
+            # Fallback: Store in in-memory dict
+            if not SUPABASE_AVAILABLE or not db:
+                sessions_db[request.thread_id] = {
+                    "thread_id": request.thread_id,
+                    "created_at": sessions_db.get(request.thread_id, {}).get(
+                        "created_at", datetime.now().isoformat()
+                    ),
+                    "last_active": datetime.now().isoformat(),
+                    "query": request.query,
+                    "response": result.get("response"),
+                    "has_itinerary": current_itinerary is not None
+                }
+            
+            return ChatResponse(
+                response=result.get("response", "No response generated"),
+                suggestions=result.get("suggestions", []),
+                state_summary=result.get("state_summary", {}),
+                thread_id=result.get("thread_id", request.thread_id),
+                timestamp=result.get("timestamp", datetime.now().isoformat()),
+                current_itinerary=current_itinerary
+            )
+            
     except Exception as e:
         logger.error(f"Error processing chat: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -395,5 +398,7 @@ if __name__ == "__main__":
         app,
         host="0.0.0.0",
         port=port,
-        log_level="info"
+        reload=True,  # Auto-reload for development
+        timeout_keep_alive=180,  # Keep-alive timeout in seconds
+        timeout_graceful_shutdown=180  # Graceful shutdown timeout in seconds
     )

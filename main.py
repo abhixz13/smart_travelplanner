@@ -15,6 +15,7 @@ from core.graph import build_graph
 from core.follow_up import generate_follow_up_suggestions, handle_user_selection
 from utils.config import load_config
 from utils.logging_config import setup_logging
+from utils.helpers import ExecutionTimer
 
 # Initialize logging
 setup_logging()
@@ -49,47 +50,49 @@ class ItineraryPlannerSystem:
         logger.info(f"Processing query for thread_id={thread_id}: {query[:100]}...")
         
         try:
-            # Get or create state for this thread
-            if thread_id in self.sessions:
-                state = self.sessions[thread_id]
-                logger.info(f"Resuming existing session: {thread_id}")
-            else:
-                state = create_initial_state(query, **kwargs)
-                logger.info(f"Created new session: {thread_id}")
-            
-            # Add new user message to state
-            from langchain_core.messages import HumanMessage
-            state["messages"].append(HumanMessage(content=query))
-            
-            # Run the state graph with increased recursion limit
-            logger.info("Invoking state graph execution")
-            final_state = self.graph.invoke(state, config={"recursion_limit": 5})
-            
-            # Store updated state
-            self.sessions[thread_id] = final_state
-            
-            # Generate follow-up suggestions
-            logger.info("Generating follow-up suggestions")
-            follow_up_result = generate_follow_up_suggestions(final_state)
-            
-            # Add follow-up message to state
-            final_state["messages"].append(follow_up_result["message"])
-            self.sessions[thread_id] = final_state
-            
-            # Extract response
-            response_text = self._extract_response(final_state)
-            
-            result = {
-                "response": response_text,
-                "suggestions": follow_up_result["suggestions"],
-                "state_summary": self._summarize_state(final_state),
-                "thread_id": thread_id,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            logger.info(f"Query processed successfully. Generated {len(follow_up_result['suggestions'])} suggestions")
-            return result
-            
+            # Time the entire query processing
+            with ExecutionTimer("process_query", logger_name=__name__) as timer:
+                # Get or create state for this thread
+                if thread_id in self.sessions:
+                    state = self.sessions[thread_id]
+                    logger.info(f"Resuming existing session: {thread_id}")
+                else:
+                    state = create_initial_state(query, **kwargs)
+                    logger.info(f"Created new session: {thread_id}")
+                
+                # Add new user message to state
+                from langchain_core.messages import HumanMessage
+                state["messages"].append(HumanMessage(content=query))
+                
+                # Run the state graph with increased recursion limit
+                logger.info("Invoking state graph execution")
+                final_state = self.graph.invoke(state, config={"recursion_limit": 5})
+                
+                # Store updated state
+                self.sessions[thread_id] = final_state
+                
+                # Generate follow-up suggestions
+                logger.info("Generating follow-up suggestions")
+                follow_up_result = generate_follow_up_suggestions(final_state)
+                
+                # Add follow-up message to state
+                final_state["messages"].append(follow_up_result["message"])
+                self.sessions[thread_id] = final_state
+                
+                # Extract response
+                response_text = self._extract_response(final_state)
+                
+                result = {
+                    "response": response_text,
+                    "suggestions": follow_up_result["suggestions"],
+                    "state_summary": self._summarize_state(final_state),
+                    "thread_id": thread_id,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                logger.info(f"Query processed successfully. Generated {len(follow_up_result['suggestions'])} suggestions")
+                return result
+                
         except Exception as e:
             logger.error(f"Error processing query: {str(e)}", exc_info=True)
             return {

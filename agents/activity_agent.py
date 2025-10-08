@@ -10,6 +10,7 @@ from datetime import datetime
 from langchain_core.messages import AIMessage
 
 from core.state import GraphState
+from utils.helpers import time_execution
 
 # Try to import Amadeus client (falls back to mock if unavailable)
 try:
@@ -89,6 +90,7 @@ def convert_country_to_city(destination: str) -> str:
     return destination
 
 
+@time_execution()
 def activity_agent_node(state: GraphState) -> Dict[str, Any]:
     """
     Activity agent node for handling activity queries.

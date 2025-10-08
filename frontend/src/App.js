@@ -154,7 +154,7 @@ function App() {
         selected_hotel: selectedHotel,
         selected_activities: selectedActivities
       }, {
-        timeout: 60000 // Increased to 60 seconds
+        timeout: 180000 // Increased to 180 seconds
       });
 
       if (response.data) {
@@ -318,7 +318,7 @@ function App() {
         selected_hotel: selectedHotel,
         selected_activities: selectedActivities
       }, {
-        timeout: 60000
+        timeout: 180000 // Increased to 180 seconds
       });
 
       if (response.data) {
