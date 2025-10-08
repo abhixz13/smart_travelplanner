@@ -20,29 +20,29 @@ const SuggestionButtons = ({ suggestions, onSelectSuggestion, isLoading }) => {
   };
 
   return (
-    <div className="bg-gradient-to-r from-primary-50 to-blue-50 border-t border-primary-100 px-4 py-6">
-      <div className="max-w-4xl mx-auto">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <span className="text-lg">💡</span>
-          Suggested Next Steps
+    <div className="bg-gradient-to-r from-primary-50 to-blue-50 border-t border-primary-100 px-4 py-4">
+      <div className="max-w-3xl mx-auto">
+        <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-2">
+          <span className="text-sm">💡</span>
+          Next Steps
         </h3>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2">
           {safeSuggestions.map((suggestion, index) => {
             // Ensure suggestion object has required properties
             const token = suggestion?.token || `suggestion-${index}`;
-            const description = suggestion?.description || 'Click to continue';
+            const description = suggestion?.description || 'Continue';
             
             return (
               <button
                 key={index}
                 onClick={() => onSelectSuggestion && onSelectSuggestion(token)}
                 disabled={isLoading}
-                className="suggestion-btn bg-white hover:bg-primary-50 text-gray-800 px-4 py-3 rounded-lg border-2 border-primary-200 hover:border-primary-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+                className="suggestion-btn bg-white hover:bg-primary-50 text-gray-800 px-3 py-2 rounded-md border border-primary-200 hover:border-primary-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 shadow-xs text-xs"
                 data-testid={`suggestion-${token}`}
               >
                 {getIcon(description)}
-                <span className="font-medium text-primary-700">[{token}]</span>
-                <span className="text-sm">{description}</span>
+                <span className="font-medium text-primary-600">[{token}]</span>
+                <span className="truncate max-w-20">{description}</span>
               </button>
             );
           })}

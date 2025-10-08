@@ -11,7 +11,7 @@ import HotelResults from './components/HotelResults';
 import ActivityResults from './components/ActivityResults';
 
 // Icons
-import { Plane, Menu, X, MessageSquare, History } from 'lucide-react';
+import { Plane, Menu, X, MessageSquare, History, Calendar } from 'lucide-react';
 
 // Backend API URL
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
@@ -685,63 +685,53 @@ function App() {
       </header>
 
       <div className="flex max-w-7xl mx-auto">
-        {/* Sidebar - Session History */}
-        <aside
-          className={`${
-            showSidebar ? 'block' : 'hidden'
-          } lg:block w-64 bg-white border-r border-gray-200 h-[calc(100vh-80px)] overflow-y-auto`}
-        >
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <History className="w-5 h-5 text-gray-600" />
-              <h2 className="font-semibold text-gray-800">Trip History</h2>
+        {/* Sidebar - Itinerary Display (replaces Trip History) */}
+        {currentItinerary && (
+          <aside
+            className={`${
+              showSidebar ? 'block' : 'hidden'
+            } lg:block w-80 bg-white border-r border-gray-200 h-[calc(100vh-80px)] overflow-y-auto`}
+          >
+            <div className="p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Calendar className="w-5 h-5 text-primary-600" />
+                <h2 className="font-semibold text-gray-800">Your Itinerary</h2>
+              </div>
+              
+              {/* Itinerary Summary */}
+              <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-4">
+                <h3 className="text-sm font-semibold text-primary-800 mb-2">
+                  {currentItinerary.destination}
+                </h3>
+                <p className="text-xs text-primary-700 mb-1">
+                  {currentItinerary.start_date} - {currentItinerary.end_date}
+                </p>
+                <p className="text-xs text-primary-700">
+                  {currentItinerary.duration_days} days • ${currentItinerary.total_estimated_cost}
+                </p>
+              </div>
+
+              {/* Selection Summary */}
+              {(selectedFlight || selectedHotel || selectedActivities.length > 0) && (
+                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <h3 className="text-sm font-semibold text-green-800 mb-2">Current Selections</h3>
+                  {selectedFlight && (
+                    <div className="text-xs text-green-700 mb-1">✈️ {selectedFlight.airline}</div>
+                  )}
+                  {selectedHotel && (
+                    <div className="text-xs text-green-700 mb-1">🏨 {selectedHotel.name}</div>
+                  )}
+                  {selectedActivities.length > 0 && (
+                    <div className="text-xs text-green-700">🎯 {selectedActivities.length} activities</div>
+                  )}
+                </div>
+              )}
+
+              {/* Itinerary Card in Sidebar */}
+              <ItineraryCard itinerary={currentItinerary} compact={true} />
             </div>
-            
-            {/* Selection Summary in Sidebar */}
-            {(selectedFlight || selectedHotel || selectedActivities.length > 0) && (
-              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <h3 className="text-sm font-semibold text-green-800 mb-2">Current Selections</h3>
-                {selectedFlight && (
-                  <div className="text-xs text-green-700 mb-1">✈️ Flight: {selectedFlight.airline}</div>
-                )}
-                {selectedHotel && (
-                  <div className="text-xs text-green-700 mb-1">🏨 Hotel: {selectedHotel.name}</div>
-                )}
-                {selectedActivities.length > 0 && (
-                  <div className="text-xs text-green-700">🎯 Activities: {selectedActivities.length}</div>
-                )}
-              </div>
-            )}
-            
-            {sessions && sessions.length > 0 ? (
-              <div className="space-y-2">
-                {sessions.map((session) => (
-                  <button
-                    key={session.thread_id}
-                    onClick={() => switchSession(session.thread_id)}
-                    className={`w-full text-left p-3 rounded-lg transition-colors ${
-                      session.thread_id === threadId
-                        ? 'bg-primary-100 text-primary-800 border border-primary-300'
-                        : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    <div className="font-medium text-sm truncate">{session.thread_id}</div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {new Date(session.last_active).toLocaleDateString()}
-                    </div>
-                    {session.has_itinerary && (
-                      <div className="text-xs text-green-600 mt-1">✓ Has itinerary</div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-gray-500 text-center py-8">
-                No trips yet.<br />Start planning!
-              </div>
-            )}
-          </div>
-        </aside>
+          </aside>
+        )}
 
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col h-[calc(100vh-80px)]">
@@ -761,30 +751,23 @@ function App() {
               isLoading={isLoading}
             />
 
-            {/* Itinerary Display */}
-            {currentItinerary && (
-              <div className="px-4 py-6">
-                <ItineraryCard itinerary={currentItinerary} />
-              </div>
-            )}
-
-            {/* Tool Results Display */}
+            {/* Tool Results Display - Only show when not selected */}
             <div className="px-4 pb-6">
-              {toolResults.flights && (
+              {toolResults.flights && !selectedFlight && (
                 <FlightResults 
                   flights={ensureArray(toolResults.flights)} 
                   onFlightSelect={handleFlightSelection}
                   selectedFlight={selectedFlight}
                 />
               )}
-              {toolResults.hotels && (
+              {toolResults.hotels && !selectedHotel && (
                 <HotelResults 
                   hotels={ensureArray(toolResults.hotels)} 
                   onHotelSelect={handleHotelSelection}
                   selectedHotel={selectedHotel}
                 />
               )}
-              {toolResults.activities && (
+              {toolResults.activities && selectedActivities.length === 0 && (
                 <ActivityResults 
                   activities={ensureArray(toolResults.activities)} 
                   onActivitySelect={handleActivitySelection}
