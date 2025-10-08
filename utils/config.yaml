@@ -11,9 +11,10 @@ llm:
 # API Keys (prefer environment variables)
 api_keys:
   openai: "${OPENAI_API_KEY}"
+  amadeus: "${AMADEUS_API_KEY}"
+  tavily: "${TAVILY_API_KEY}"
   
   # Future integrations (placeholder for MVP)
-  amadeus: "${AMADEUS_API_KEY}"
   booking: "${BOOKING_API_KEY}"
   viator: "${VIATOR_API_KEY}"
   google_places: "${GOOGLE_PLACES_API_KEY}"

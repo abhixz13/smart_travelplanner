@@ -23,6 +23,7 @@ structlog>=23.1.0
 # HTTP & APIs (for future integrations)
 httpx>=0.25.0
 requests>=2.31.0
+tavily-python>=0.3.0
 
 # Database (for production)
 # supabase>=2.0.0  # Uncomment for production
