@@ -5,17 +5,20 @@ const ChatInterface = ({ messages, onSendMessage, isLoading }) => {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
 
+  // Ensure messages is always an array
+  const safeMessages = Array.isArray(messages) ? messages : [];
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [safeMessages]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (input.trim() && !isLoading) {
+    if (input.trim() && !isLoading && onSendMessage) {
       onSendMessage(input);
       setInput('');
     }
@@ -25,35 +28,35 @@ const ChatInterface = ({ messages, onSendMessage, isLoading }) => {
     <div className="flex flex-col h-full">
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {messages.length === 0 ? (
+        {safeMessages.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-6xl mb-4">✈️</div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">Plan Your Perfect Trip</h2>
             <p className="text-gray-600">Tell me where you'd like to go and I'll help you create an amazing itinerary!</p>
             <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
               <button
-                onClick={() => onSendMessage('Plan a 7-day trip to Japan, budget-friendly, interested in culture and food')}
+                onClick={() => onSendMessage && onSendMessage('Plan a 7-day trip to Japan, budget-friendly, interested in culture and food')}
                 className="p-4 bg-white rounded-lg border-2 border-gray-200 hover:border-primary-500 transition-colors text-left"
               >
                 <div className="font-semibold text-gray-800">🇯🇵 Japan Adventure</div>
                 <div className="text-sm text-gray-600">7 days, culture & food</div>
               </button>
               <button
-                onClick={() => onSendMessage('Plan a 5-day trip to Paris for art lovers')}
+                onClick={() => onSendMessage && onSendMessage('Plan a 5-day trip to Paris for art lovers')}
                 className="p-4 bg-white rounded-lg border-2 border-gray-200 hover:border-primary-500 transition-colors text-left"
               >
                 <div className="font-semibold text-gray-800">🇫🇷 Paris Getaway</div>
                 <div className="text-sm text-gray-600">5 days, art & culture</div>
               </button>
               <button
-                onClick={() => onSendMessage('Find flights from San Francisco to Tokyo for June 1-8')}
+                onClick={() => onSendMessage && onSendMessage('Find flights from San Francisco to Tokyo for June 1-8')}
                 className="p-4 bg-white rounded-lg border-2 border-gray-200 hover:border-primary-500 transition-colors text-left"
               >
                 <div className="font-semibold text-gray-800">✈️ Flight Search</div>
                 <div className="text-sm text-gray-600">Find the best flights</div>
               </button>
               <button
-                onClick={() => onSendMessage('Show me hotel options in Barcelona')}
+                onClick={() => onSendMessage && onSendMessage('Show me hotel options in Barcelona')}
                 className="p-4 bg-white rounded-lg border-2 border-gray-200 hover:border-primary-500 transition-colors text-left"
               >
                 <div className="font-semibold text-gray-800">🏨 Hotel Search</div>
@@ -62,7 +65,7 @@ const ChatInterface = ({ messages, onSendMessage, isLoading }) => {
             </div>
           </div>
         ) : (
-          messages.map((msg, index) => (
+          safeMessages.map((msg, index) => (
             <div
               key={index}
               className={`message flex ${
@@ -84,7 +87,7 @@ const ChatInterface = ({ messages, onSendMessage, isLoading }) => {
                     <span className="text-sm font-semibold text-gray-700">Travel Assistant</span>
                   </div>
                 )}
-                <div className="whitespace-pre-wrap">{msg.content}</div>
+                <div className="whitespace-pre-wrap">{msg.content || 'Processing...'}</div>
                 {msg.timestamp && (
                   <div className="text-xs opacity-70 mt-2">
                     {new Date(msg.timestamp).toLocaleTimeString()}

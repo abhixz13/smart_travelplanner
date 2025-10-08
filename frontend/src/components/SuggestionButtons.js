@@ -2,9 +2,14 @@ import React from 'react';
 import { Plane, Hotel, MapPin, Calendar, DollarSign, RefreshCw } from 'lucide-react';
 
 const SuggestionButtons = ({ suggestions, onSelectSuggestion, isLoading }) => {
-  if (!suggestions || suggestions.length === 0) return null;
+  // Ensure suggestions is always an array
+  const safeSuggestions = Array.isArray(suggestions) ? suggestions : [];
+
+  if (safeSuggestions.length === 0) return null;
 
   const getIcon = (description) => {
+    if (!description) return <RefreshCw className="w-4 h-4" />;
+    
     const lowerDesc = description.toLowerCase();
     if (lowerDesc.includes('flight')) return <Plane className="w-4 h-4" />;
     if (lowerDesc.includes('hotel') || lowerDesc.includes('accommodation')) return <Hotel className="w-4 h-4" />;
@@ -22,19 +27,25 @@ const SuggestionButtons = ({ suggestions, onSelectSuggestion, isLoading }) => {
           Suggested Next Steps
         </h3>
         <div className="flex flex-wrap gap-3">
-          {suggestions.map((suggestion, index) => (
-            <button
-              key={index}
-              onClick={() => onSelectSuggestion(suggestion.token)}
-              disabled={isLoading}
-              className="suggestion-btn bg-white hover:bg-primary-50 text-gray-800 px-4 py-3 rounded-lg border-2 border-primary-200 hover:border-primary-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
-              data-testid={`suggestion-${suggestion.token}`}
-            >
-              {getIcon(suggestion.description)}
-              <span className="font-medium text-primary-700">[{suggestion.token}]</span>
-              <span className="text-sm">{suggestion.description}</span>
-            </button>
-          ))}
+          {safeSuggestions.map((suggestion, index) => {
+            // Ensure suggestion object has required properties
+            const token = suggestion?.token || `suggestion-${index}`;
+            const description = suggestion?.description || 'Click to continue';
+            
+            return (
+              <button
+                key={index}
+                onClick={() => onSelectSuggestion && onSelectSuggestion(token)}
+                disabled={isLoading}
+                className="suggestion-btn bg-white hover:bg-primary-50 text-gray-800 px-4 py-3 rounded-lg border-2 border-primary-200 hover:border-primary-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+                data-testid={`suggestion-${token}`}
+              >
+                {getIcon(description)}
+                <span className="font-medium text-primary-700">[{token}]</span>
+                <span className="text-sm">{description}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

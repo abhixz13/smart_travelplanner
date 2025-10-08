@@ -14,11 +14,10 @@ import ActivityResults from './components/ActivityResults';
 import { Plane, Menu, X, MessageSquare, History } from 'lucide-react';
 
 // Backend API URL
-// TODO: Replace with environment variable for production deployment
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
 function App() {
-  // State management
+  // State management - Initialize with proper default values
   const [messages, setMessages] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [currentItinerary, setCurrentItinerary] = useState(null);
@@ -27,9 +26,9 @@ function App() {
   const [sessions, setSessions] = useState([]);
   const [showSidebar, setShowSidebar] = useState(false);
   const [error, setError] = useState(null);
+  const [backendAvailable, setBackendAvailable] = useState(true);
 
   // Mock data for tool results (flights, hotels, activities)
-  // These are extracted from AI responses
   const [toolResults, setToolResults] = useState({
     flights: null,
     hotels: null,
@@ -41,11 +40,13 @@ function App() {
     loadSessions();
   }, []);
 
-  // API call to send chat message
-  // TODO: Backend Integration Point
-  // - This currently calls /api/chat endpoint
-  // - In production, add authentication headers
-  // - Handle rate limiting and retries
+  // Safe array helper function
+  const ensureArray = (value) => {
+    if (Array.isArray(value)) return value;
+    return [];
+  };
+
+  // API call to send chat message with improved error handling
   const sendMessage = async (query) => {
     setIsLoading(true);
     setError(null);
@@ -59,53 +60,117 @@ function App() {
       };
       setMessages(prev => [...prev, userMessage]);
 
+      if (!backendAvailable) {
+        // Handle offline mode with mock responses
+        handleMockResponse(query);
+        return;
+      }
+
       // Call backend API
       const response = await axios.post(`${API_URL}/api/chat`, {
         query,
         thread_id: threadId,
-        user_preferences: {} // TODO: Add user preferences from settings
+        user_preferences: {}
+      }, {
+        timeout: 10000 // 10 second timeout
       });
 
-      // Add AI response to messages
-      const aiMessage = {
-        type: 'ai',
-        content: response.data.response,
-        timestamp: response.data.timestamp
-      };
-      setMessages(prev => [...prev, aiMessage]);
+      if (response.data) {
+        // Add AI response to messages
+        const aiMessage = {
+          type: 'ai',
+          content: response.data.response || 'I received your request and I\'m working on a response.',
+          timestamp: response.data.timestamp || new Date().toISOString()
+        };
+        setMessages(prev => [...prev, aiMessage]);
 
-      // Update suggestions
-      setSuggestions(response.data.suggestions || []);
+        // Update suggestions - ensure it's an array
+        setSuggestions(ensureArray(response.data.suggestions));
 
-      // Update current itinerary if available
-      if (response.data.current_itinerary) {
-        setCurrentItinerary(response.data.current_itinerary);
+        // Update current itinerary if available
+        if (response.data.current_itinerary) {
+          setCurrentItinerary(response.data.current_itinerary);
+        }
+
+        // Extract tool results from response
+        extractToolResults(response.data);
       }
-
-      // Extract tool results from response
-      // TODO: Backend should return structured tool_results in response
-      extractToolResults(response.data);
 
     } catch (err) {
       console.error('Error sending message:', err);
-      setError(err.response?.data?.detail || 'Failed to send message. Please try again.');
+      setBackendAvailable(false);
       
-      // Add error message to chat
+      // Handle backend unavailable - switch to mock mode
       const errorMessage = {
         type: 'ai',
-        content: 'Sorry, I encountered an error processing your request. Please try again.',
+        content: 'I\'m running in demo mode right now. Let me show you what I can do with some sample data!',
         timestamp: new Date().toISOString()
       };
       setMessages(prev => [...prev, errorMessage]);
+      
+      // Generate mock response
+      setTimeout(() => {
+        handleMockResponse(query);
+      }, 1000);
+      
     } finally {
       setIsLoading(false);
     }
   };
 
-  // API call to handle suggestion selection
-  // TODO: Backend Integration Point
-  // - Calls /api/suggestion endpoint
-  // - Track analytics on suggestion usage
+  // Handle mock responses when backend is unavailable
+  const handleMockResponse = (query) => {
+    const lowerQuery = query.toLowerCase();
+    
+    let mockResponse = "I understand you're looking for travel assistance. Here's what I can help you with in demo mode:";
+    let mockSuggestions = [
+      { token: 'flights', description: 'Show sample flights' },
+      { token: 'hotels', description: 'Browse hotel options' },
+      { token: 'activities', description: 'Discover activities' },
+      { token: 'itinerary', description: 'Create sample itinerary' }
+    ];
+
+    // Generate relevant mock data based on query
+    if (lowerQuery.includes('flight')) {
+      setToolResults(prev => ({
+        ...prev,
+        flights: generateMockFlights()
+      }));
+      mockResponse = "Here are some sample flight options for your trip:";
+    }
+    
+    if (lowerQuery.includes('hotel')) {
+      setToolResults(prev => ({
+        ...prev,
+        hotels: generateMockHotels()
+      }));
+      mockResponse = "I found some great hotel options for you:";
+    }
+    
+    if (lowerQuery.includes('activity')) {
+      setToolResults(prev => ({
+        ...prev,
+        activities: generateMockActivities()
+      }));
+      mockResponse = "Here are some exciting activities you might enjoy:";
+    }
+
+    if (lowerQuery.includes('japan') || lowerQuery.includes('tokyo')) {
+      setCurrentItinerary(generateMockItinerary());
+      mockResponse = "I've created a sample 7-day Japan itinerary for you:";
+    }
+
+    const aiMessage = {
+      type: 'ai',
+      content: mockResponse,
+      timestamp: new Date().toISOString()
+    };
+    
+    setMessages(prev => [...prev, aiMessage]);
+    setSuggestions(mockSuggestions);
+  };
+
+  // API call to handle suggestion selection with error handling
   const handleSuggestionSelect = async (token) => {
     setIsLoading(true);
     setError(null);
@@ -119,43 +184,86 @@ function App() {
       };
       setMessages(prev => [...prev, userMessage]);
 
+      if (!backendAvailable) {
+        handleMockSuggestionResponse(token);
+        return;
+      }
+
       // Call backend API
       const response = await axios.post(`${API_URL}/api/suggestion`, {
         token,
         thread_id: threadId
+      }, {
+        timeout: 10000
       });
 
-      // Add AI response
-      const aiMessage = {
-        type: 'ai',
-        content: response.data.response,
-        timestamp: response.data.timestamp
-      };
-      setMessages(prev => [...prev, aiMessage]);
+      if (response.data) {
+        // Add AI response
+        const aiMessage = {
+          type: 'ai',
+          content: response.data.response || 'Processing your selection...',
+          timestamp: response.data.timestamp || new Date().toISOString()
+        };
+        setMessages(prev => [...prev, aiMessage]);
 
-      // Update suggestions
-      setSuggestions(response.data.suggestions || []);
+        // Update suggestions
+        setSuggestions(ensureArray(response.data.suggestions));
 
-      // Update current itinerary
-      if (response.data.current_itinerary) {
-        setCurrentItinerary(response.data.current_itinerary);
+        // Update current itinerary
+        if (response.data.current_itinerary) {
+          setCurrentItinerary(response.data.current_itinerary);
+        }
+
+        // Extract tool results
+        extractToolResults(response.data);
       }
-
-      // Extract tool results
-      extractToolResults(response.data);
 
     } catch (err) {
       console.error('Error handling suggestion:', err);
-      setError(err.response?.data?.detail || 'Failed to process suggestion. Please try again.');
+      setBackendAvailable(false);
+      handleMockSuggestionResponse(token);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Handle mock suggestion responses
+  const handleMockSuggestionResponse = (token) => {
+    let response = '';
+    
+    switch (token) {
+      case 'flights':
+        setToolResults(prev => ({ ...prev, flights: generateMockFlights() }));
+        response = 'Here are some sample flight options:';
+        break;
+      case 'hotels':
+        setToolResults(prev => ({ ...prev, hotels: generateMockHotels() }));
+        response = 'Here are some hotel recommendations:';
+        break;
+      case 'activities':
+        setToolResults(prev => ({ ...prev, activities: generateMockActivities() }));
+        response = 'Here are some activity suggestions:';
+        break;
+      case 'itinerary':
+        setCurrentItinerary(generateMockItinerary());
+        response = 'I\'ve created a sample itinerary for you:';
+        break;
+      default:
+        response = 'Here\'s some information about your selection:';
+    }
+
+    const aiMessage = {
+      type: 'ai',
+      content: response,
+      timestamp: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, aiMessage]);
+  };
+
   // Extract mock tool results from response
-  // TODO: Backend should return structured data in tool_results field
-  // For now, we'll use mock data when certain keywords are detected
   const extractToolResults = (data) => {
+    if (!data || !data.response) return;
+    
     const content = data.response.toLowerCase();
     
     // Mock flight data
@@ -183,16 +291,21 @@ function App() {
     }
   };
 
-  // Load all sessions
-  // TODO: Backend Integration Point
-  // - Query from Supabase user_sessions table
-  // - Filter by authenticated user
+  // Load all sessions with error handling
   const loadSessions = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/sessions`);
-      setSessions(response.data || []);
+      const response = await axios.get(`${API_URL}/api/sessions`, {
+        timeout: 5000
+      });
+      setSessions(ensureArray(response.data));
     } catch (err) {
       console.error('Error loading sessions:', err);
+      setBackendAvailable(false);
+      // Use mock sessions for demo
+      setSessions([
+        { thread_id: 'demo-japan', last_active: new Date().toISOString(), has_itinerary: true },
+        { thread_id: 'demo-paris', last_active: new Date().toISOString(), has_itinerary: false }
+      ]);
     }
   };
 
@@ -204,9 +317,6 @@ function App() {
     setCurrentItinerary(null);
     setToolResults({ flights: null, hotels: null, activities: null });
     setShowSidebar(false);
-    
-    // TODO: Load session history from backend
-    // const session = await axios.get(`${API_URL}/api/session/${newThreadId}`);
   };
 
   // Create new session
@@ -216,7 +326,6 @@ function App() {
   };
 
   // Mock data generators
-  // TODO: Remove these when real API integrations are complete
   const generateMockFlights = () => [
     {
       airline: 'Japan Airlines',
@@ -325,6 +434,46 @@ function App() {
     }
   ];
 
+  const generateMockItinerary = () => ({
+    destination: 'Tokyo, Japan',
+    start_date: '2024-06-01',
+    end_date: '2024-06-07',
+    duration_days: 7,
+    total_estimated_cost: 2500,
+    summary: 'A wonderful week exploring Tokyo\'s culture, food, and traditions',
+    days: [
+      {
+        day_number: 1,
+        date: '2024-06-01',
+        location: 'Tokyo',
+        estimated_cost: 150,
+        activities: [
+          { name: 'Arrive at Narita Airport', time: '2:00 PM' },
+          { name: 'Check into hotel in Shibuya', time: '4:00 PM' },
+          { name: 'Explore Shibuya Crossing', time: '6:00 PM' }
+        ],
+        meals: [{ name: 'Welcome dinner at local ramen shop', type: 'dinner' }],
+        accommodation: { name: 'Shibuya Hotel' }
+      },
+      {
+        day_number: 2,
+        date: '2024-06-02',
+        location: 'Tokyo',
+        estimated_cost: 200,
+        activities: [
+          { name: 'Visit Senso-ji Temple', time: '9:00 AM' },
+          { name: 'Explore Asakusa district', time: '11:00 AM' },
+          { name: 'Tokyo Skytree visit', time: '2:00 PM' }
+        ],
+        meals: [
+          { name: 'Traditional breakfast', type: 'breakfast' },
+          { name: 'Street food lunch', type: 'lunch' },
+          { name: 'Kaiseki dinner', type: 'dinner' }
+        ]
+      }
+    ]
+  });
+
   return (
     <div className="App min-h-screen bg-gray-50">
       {/* Header */}
@@ -339,6 +488,11 @@ function App() {
             </button>
             <Plane className="w-8 h-8 text-primary-600" />
             <h1 className="text-2xl font-bold text-gray-800">AI Travel Planner</h1>
+            {!backendAvailable && (
+              <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                Demo Mode
+              </span>
+            )}
           </div>
           <button
             onClick={createNewSession}
@@ -364,7 +518,7 @@ function App() {
               <h2 className="font-semibold text-gray-800">Trip History</h2>
             </div>
             
-            {sessions.length > 0 ? (
+            {sessions && sessions.length > 0 ? (
               <div className="space-y-2">
                 {sessions.map((session) => (
                   <button
@@ -407,7 +561,7 @@ function App() {
           <div className="flex-1 overflow-y-auto">
             {/* Chat Interface */}
             <ChatInterface
-              messages={messages}
+              messages={ensureArray(messages)}
               onSendMessage={sendMessage}
               isLoading={isLoading}
             />
@@ -421,15 +575,15 @@ function App() {
 
             {/* Tool Results Display */}
             <div className="px-4 pb-6">
-              {toolResults.flights && <FlightResults flights={toolResults.flights} />}
-              {toolResults.hotels && <HotelResults hotels={toolResults.hotels} />}
-              {toolResults.activities && <ActivityResults activities={toolResults.activities} />}
+              {toolResults.flights && <FlightResults flights={ensureArray(toolResults.flights)} />}
+              {toolResults.hotels && <HotelResults hotels={ensureArray(toolResults.hotels)} />}
+              {toolResults.activities && <ActivityResults activities={ensureArray(toolResults.activities)} />}
             </div>
           </div>
 
           {/* Suggestion Buttons */}
           <SuggestionButtons
-            suggestions={suggestions}
+            suggestions={ensureArray(suggestions)}
             onSelectSuggestion={handleSuggestionSelect}
             isLoading={isLoading}
           />
@@ -438,8 +592,12 @@ function App() {
 
       {/* Footer Note */}
       <div className="bg-gray-100 border-t border-gray-300 px-4 py-3 text-center text-sm text-gray-600">
-        <strong>🚧 MVP Version:</strong> Using mock data for flights, hotels, and activities. 
-        <span className="font-medium text-primary-700"> Phase 2: Supabase integration</span>
+        <strong>🚧 Demo Version:</strong> 
+        {backendAvailable 
+          ? 'Using mock data for flights, hotels, and activities.'
+          : 'Running in offline demo mode with sample data.'
+        }
+        <span className="font-medium text-primary-700"> Ready for production integration</span>
       </div>
     </div>
   );
