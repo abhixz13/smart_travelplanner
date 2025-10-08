@@ -6,7 +6,7 @@ Integrates with Amadeus API for real hotel data.
 
 import logging
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from langchain_core.messages import AIMessage
 
 from core.state import GraphState
@@ -87,20 +87,33 @@ def execute_hotel_search(state: GraphState, params: Dict[str, Any]) -> Dict[str,
     from agents.flight_agent import convert_country_to_city
     destination = convert_country_to_city(destination)
     
+    # Generate dates if not provided (required for Amadeus API)
+    if not check_in:
+        check_in = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+        logger.info(f"Generated default check-in date: {check_in}")
+    
+    if not check_out:
+        check_in_obj = datetime.strptime(check_in, "%Y-%m-%d")
+        check_out = (check_in_obj + timedelta(days=7)).strftime("%Y-%m-%d")
+        logger.info(f"Generated default check-out date: {check_out}")
+    
     # Try Amadeus API first
-    if AMADEUS_AVAILABLE and check_in and check_out:
+    if AMADEUS_AVAILABLE:
         try:
             amadeus = get_amadeus_client(use_production=False)
             
             # Try to get city code from destination
             # First, search for the city to get IATA code
-            cities = amadeus.city_search(destination, max_results=1)
+            # Extract just the city name from the destination string (e.g., "Tokyo, Japan" -> "Tokyo")
+            city_name = destination.split(',')[0].strip() if ',' in destination else destination.strip()
+            logger.info(f"Searching cities: {city_name}")
+            cities = amadeus.city_search(city_name, max_results=1)
             
             if cities and len(cities) > 0:
                 city_code = cities[0].get("iataCode")
                 
                 if city_code:
-                    logger.info(f"🔍 Searching Amadeus hotels in: {city_code} ({destination})")
+                    logger.info(f"🔍 Searching Amadeus hotels in: {city_code} ({destination}) from {check_in} to {check_out}")
                     
                     result = amadeus.hotel_search_by_city(
                         city_code=city_code,

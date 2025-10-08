@@ -156,6 +156,16 @@ def execute_flight_search(state: GraphState, params: Dict[str, Any]) -> Dict[str
     # Convert country names to cities (e.g., "Japan" → "Tokyo")
     destination = convert_country_to_city(destination)
     
+    # Generate dates if not provided (required for Amadeus API)
+    if not departure_date:
+        departure_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+        logger.info(f"Generated default departure date: {departure_date}")
+    
+    if not return_date:
+        departure_obj = datetime.strptime(departure_date, "%Y-%m-%d")
+        return_date = (departure_obj + timedelta(days=7)).strftime("%Y-%m-%d")
+        logger.info(f"Generated default return date: {return_date}")
+    
     # Try Amadeus API first
     if AMADEUS_AVAILABLE:
         try:
@@ -182,8 +192,11 @@ def execute_flight_search(state: GraphState, params: Dict[str, Any]) -> Dict[str
             # Check if destination is not already an IATA code
             if not (isinstance(destination, str) and len(destination) == 3 and destination.isupper()):
                 logger.info(f"Resolving destination city: {destination}")
+                # Extract just the city name from the destination string (e.g., "Tokyo, Japan" -> "Tokyo")
+                city_name = destination.split(',')[0].strip() if ',' in destination else destination.strip()
+                logger.info(f"Searching cities: {city_name}")
                 # Step 1: Use city_search to get city IATA code
-                cities = amadeus.city_search(keyword=destination, max_results=1)
+                cities = amadeus.city_search(keyword=city_name, max_results=1)
                 
                 if cities and len(cities) > 0:
                     destination_code = cities[0].get("iataCode", destination)
@@ -192,7 +205,7 @@ def execute_flight_search(state: GraphState, params: Dict[str, Any]) -> Dict[str
                     logger.warning(f"⚠️ City search failed for '{destination}', using as-is")
                     # Could not resolve - will use original value (may cause 400 error)
             
-            logger.info(f"🔍 Searching Amadeus API: {origin_code} → {destination_code}")
+            logger.info(f"🔍 Searching Amadeus API: {origin_code} → {destination_code} on {departure_date}")
             
             result = amadeus.search_flights(
                 origin=origin_code,

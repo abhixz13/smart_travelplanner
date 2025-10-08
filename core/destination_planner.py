@@ -103,6 +103,8 @@ Extract and structure the following information (use null if not mentioned):
 
 {{
   "duration_days": integer or null,
+  "departure_date": "YYYY-MM-DD" or null,
+  "return_date": "YYYY-MM-DD" or null,
   "region_preference": "specific region/country" or null,
   "budget": "budget" | "mid-range" | "luxury" | null,
   "travel_party": {{
@@ -128,6 +130,7 @@ Extract and structure the following information (use null if not mentioned):
 Be thorough in extraction. If weather preferences mentioned (not extreme, mild, warm, etc.), capture them.
 If family-friendly mentioned or kids present, note physical_difficulty as "easy".
 If specific places mentioned (Niagara Falls), add to specific_attractions.
+If specific dates mentioned ("next month", "in June", "from 15th to 22nd"), convert to YYYY-MM-DD format.
 
 Respond with ONLY valid JSON.
 """
@@ -194,6 +197,8 @@ Requirements:
 
 Consider:
 - Duration: {requirements.get('duration_days', 'unspecified')} days
+- Departure: {requirements.get('departure_date', 'flexible dates')}
+- Return: {requirements.get('return_date', 'flexible dates')}
 - Region: {requirements.get('region_preference', 'anywhere')}
 - Budget: {requirements.get('budget', 'mid-range')}
 - Travel party: {requirements.get('travel_party', {}).get('type', 'unknown')}
@@ -242,6 +247,7 @@ Prioritize destinations that:
 - Fit the budget
 - Offer activities aligned with interests
 - Avoid activities they want to avoid
+- Have optimal weather conditions for the specific travel dates (if provided)
 
 Respond with ONLY valid JSON array.
 """
@@ -443,68 +449,71 @@ def rank_destinations(candidates: List[Dict[str, Any]],
 
 
 def format_preplanner_response(recommendations: Dict[str, Any], 
-                               requirements: Dict[str, Any]) -> str:
+                              requirements: Dict[str, Any]) -> str:
     """
-    Format pre-planner recommendations into human-readable response.
-    """
-    destinations = recommendations.get("recommendations", [])
+    Format destination recommendations into human-readable response.
     
-    if not destinations:
-        return "I'd love to help you find the perfect destination! Could you tell me more about what you're looking for?"
+    Includes clarifying questions for missing information like dates.
+    """
+    recs = recommendations.get("recommendations", [])
+    
+    if not recs:
+        return "I couldn't find destinations matching your requirements. Could you provide more details?"
     
     response_parts = [
-        "🌍 Based on your requirements, here are my top destination recommendations:\n"
+        f"Based on your preferences, I recommend these {len(recs)} destinations:",
+        ""
     ]
     
-    # Summary of requirements
-    duration = requirements.get("duration_days")
-    if duration:
-        response_parts.append(f"\n📅 Trip Duration: {duration} days")
+    # Show top 3 recommendations
+    for i, rec in enumerate(recs[:3], 1):
+        response_parts.append(
+            f"\n{i}. **{rec.get('destination')}**, {rec.get('country')} "
+            f"(Score: {rec.get('match_score', 0)}/10)"
+        )
+        
+        if rec.get('why_suitable'):
+            response_parts.append(f"\n   📝 {rec.get('why_suitable')}")
+        
+        if rec.get('typical_weather'):
+            response_parts.append(f"\n   🌤️  Weather: {rec.get('typical_weather')}")
+        
+        if rec.get('family_friendly_score'):
+            response_parts.append(f"\n   👨‍👩‍👧‍👦 Family-friendly: {rec.get('family_friendly_score')}/10")
+        
+        if rec.get('estimated_daily_budget'):
+            response_parts.append(f"\n   💰 Estimated daily cost: ${rec.get('estimated_daily_budget')}")
+        
+        if rec.get('key_attractions'):
+            attractions = ", ".join(rec['key_attractions'][:3])
+            response_parts.append(f"\n   🏛️  Key attractions: {attractions}")
     
-    travel_party = requirements.get("travel_party", {})
-    if travel_party.get("children"):
-        response_parts.append(f"\n👨‍👩‍👧‍👦 Traveling with {travel_party['children']} child(ren)")
+    # Add clarifying questions for missing information
+    clarifying_questions = []
     
-    constraints = requirements.get("constraints", {})
-    if constraints.get("weather"):
-        response_parts.append(f"\n🌤️ Weather Preference: {constraints['weather']}")
+    if not requirements.get("departure_date") and not requirements.get("return_date"):
+        clarifying_questions.append(
+            "📅 When would you like to travel? Please provide specific dates (e.g., 'June 15-22' or 'from next month for 7 days')"
+        )
+    elif not requirements.get("departure_date"):
+        clarifying_questions.append("📅 What is your departure date?")
+    elif not requirements.get("return_date"):
+        clarifying_questions.append("📅 What is your return date?")
     
-    response_parts.append("\n" + "="*60)
+    if not requirements.get("duration_days"):
+        clarifying_questions.append("⏰ How many days will your trip be?")
     
-    # Show top 3-5 recommendations
-    for i, dest in enumerate(destinations[:5], 1):
-        response_parts.append(f"\n\n**{i}. {dest['destination']}, {dest['country']}**")
-        response_parts.append(f"\n   📊 Match Score: {dest['final_score']:.1f}/100")
-        
-        response_parts.append(f"\n\n   ✨ Why This Destination:")
-        response_parts.append(f"\n   {dest['why_suitable']}")
-        
-        response_parts.append(f"\n\n   🌡️ Weather: {dest['typical_weather']}")
-        response_parts.append(f"\n   💰 Est. Daily Budget: ${dest['estimated_daily_budget']}")
-        response_parts.append(f"\n   👨‍👩‍👧 Family-Friendly: {dest['family_friendly_score']}/10")
-        response_parts.append(f"\n   🛡️ Safety: {dest['safety_score']}/10")
-        
-        if dest.get("key_attractions"):
-            response_parts.append(f"\n\n   🎯 Key Attractions:")
-            for attraction in dest["key_attractions"][:4]:
-                response_parts.append(f"\n      • {attraction}")
-        
-        if dest.get("concerns"):
-            response_parts.append(f"\n\n   ⚠️ Things to Consider:")
-            for concern in dest["concerns"][:2]:
-                response_parts.append(f"\n      • {concern}")
-        
-        # Add research insights if available
-        if dest.get("research", {}).get("answer"):
-            response_parts.append(f"\n\n   💡 Current Info:")
-            answer = dest["research"]["answer"][:200]
-            response_parts.append(f"\n   {answer}...")
-        
-        response_parts.append("\n   " + "-"*50)
+    if not requirements.get("budget"):
+        clarifying_questions.append("💰 What is your budget level? (budget, mid-range, luxury)")
     
-    response_parts.append("\n\n" + "="*60)
-    response_parts.append("\n\n💬 Which destination interests you? I can create a detailed itinerary for any of these!")
-    response_parts.append("\nOr let me know if you'd like different options based on other criteria.")
+    if clarifying_questions:
+        response_parts.append("\n\nTo help me provide better recommendations:")
+        for question in clarifying_questions:
+            response_parts.append(f"\n• {question}")
+    
+    response_parts.append(
+        "\n\nWhich destination interests you most? Or would you like me to research more options?"
+    )
     
     return "".join(response_parts)
 
