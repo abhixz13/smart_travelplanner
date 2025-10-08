@@ -45,12 +45,47 @@ def router_node(state: GraphState) -> Dict[str, Any]:
             logger.warning("No messages in state, defaulting to END")
             return {"next_agent": "END"}
         
+        # Check if destination planner phase is active or needed
+        metadata = state.get("metadata", {})
+        user_prefs = state.get("user_preferences", {})
+        destination = user_prefs.get("destination")
+        
+        # Detect if user needs destination help
+        message_content = last_message.content.lower()
+        needs_destination_help = (
+            not destination and 
+            any(phrase in message_content for phrase in [
+                "don't know where", "help me choose", "suggest destination",
+                "where should i go", "recommend a place", "help me decide",
+                "not sure where", "uncertain about destination"
+            ])
+        ) or metadata.get("preplanner_phase", False)
+        
+        # If destination selected from preplanner, route to PLANNER
+        if metadata.get("destination_selected", False):
+            logger.info("Destination selected from destination_planner, routing to PLANNER")
+            return {
+                "next_agent": "PLANNER",
+                "messages": state["messages"]
+            }
+        
+        # If needs destination help, route to DESTINATION_PLANNER
+        if needs_destination_help:
+            logger.info("User needs destination help, routing to DESTINATION_PLANNER")
+            return {
+                "next_agent": "DESTINATION_PLANNER",
+                "messages": state["messages"] + [
+                    AIMessage(content="Let me help you find the perfect destination...")
+                ]
+            }
+        
         # Build routing prompt
         routing_prompt = f"""You are a router for a travel itinerary planning system.
 
 Analyze the user's message and determine which specialized agent should handle it.
 
 Available agents:
+- DESTINATION_PLANNER: When user is uncertain about destination or asks for destination suggestions
 - PLANNER: For comprehensive trip planning, creating itineraries, orchestrating multiple components
 - FLIGHT: For flight searches, airline information, booking inquiries
 - HOTEL: For accommodation searches, hotel information, booking inquiries
@@ -62,15 +97,20 @@ Available agents:
 User message: {last_message.content}
 
 Current state:
+- Has destination: {destination is not None}
 - Has plan: {state.get('plan') is not None}
 - Has itinerary: {state.get('current_itinerary') is not None}
 - Message count: {len(state['messages'])}
 
-Respond with ONLY the agent name (PLANNER, FLIGHT, HOTEL, ACTIVITY, ITINERARY, REASONING, or END).
+Respond with ONLY the agent name (DESTINATION_PLANNER, PLANNER, FLIGHT, HOTEL, ACTIVITY, ITINERARY, REASONING, or END).
 
-For initial trip planning requests, use PLANNER.
-For specific component requests after a plan exists, use the specialized agent.
-For validation or optimization, use REASONING.
+Decision rules:
+- If user is uncertain about destination or provides constraints without specific destination -> DESTINATION_PLANNER
+- If user asks "where should I go" or "help me choose destination" -> DESTINATION_PLANNER
+- If user describes requirements (weather, family, budget) without mentioning destination -> DESTINATION_PLANNER
+- For initial trip planning requests with known destination -> PLANNER
+- For specific component requests after a plan exists -> use specialized agent
+- For validation or optimization -> REASONING
 """
         
         # Get routing decision
