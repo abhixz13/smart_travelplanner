@@ -9,6 +9,7 @@ sys.path.insert(0, '/app')
 
 # Set environment variables
 os.environ['TAVILY_API_KEY'] = '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'
+os.environ['OPENAI_API_KEY'] = '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'
 
 def test_imports():
     """Test 1: Verify all imports work."""
