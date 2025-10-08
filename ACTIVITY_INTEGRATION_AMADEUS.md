@@ -294,8 +294,8 @@ for activity in result['activities'][:3]:
 
 Uses existing Amadeus credentials:
 ```bash
-AMADEUS_API_KEY=KGXuCB29JyaAxq8ru3ChllBePwuNIHdZ
-AMADEUS_API_SECRET=9QSuwXwMwY7T33sY
+AMADEUS_API_KEY=your_amadeus_api_key_here
+AMADEUS_API_SECRET=your_amadeus_api_secret_here
 ```
 
 **Already configured in:**

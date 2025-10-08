@@ -92,8 +92,8 @@ if result.get("success"):
 
 **Required in `.env` and `backend/.env`:**
 ```bash
-AMADEUS_API_KEY=KGXuCB29JyaAxq8ru3ChllBePwuNIHdZ
-AMADEUS_API_SECRET=9QSuwXwMwY7T33sY
+AMADEUS_API_KEY=your_amadeus_api_key_here
+AMADEUS_API_SECRET=your_amadeus_api_secret_here
 ```
 
 **API Modes:**
