@@ -49,6 +49,28 @@ def route_after_router(state: GraphState) -> Literal["destination_planner", "pla
     return route
 
 
+def route_after_destination_planner(state: GraphState) -> Literal["router", "end"]:
+    """
+    After destination planner provides recommendations, route based on selection.
+    
+    Args:
+        state: Current graph state
+    
+    Returns:
+        Next node name
+    """
+    metadata = state.get("metadata", {})
+    
+    # If destination has been selected, continue to router (which will route to planner)
+    if metadata.get("destination_selected", False):
+        logger.info("Destination selected, routing to router")
+        return "router"
+    else:
+        # Wait for user to select from recommendations
+        logger.info("Waiting for destination selection, ending graph")
+        return "end"
+
+
 def route_after_planner(state: GraphState) -> Literal["planner_execution", "reasoning"]:
     """
     After planner generates a plan, route to execution or reasoning.
