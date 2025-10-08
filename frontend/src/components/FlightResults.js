@@ -1,7 +1,7 @@
 import React from 'react';
-import { Plane, Clock, Users } from 'lucide-react';
+import { Plane, Clock, Users, CheckCircle } from 'lucide-react';
 
-const FlightResults = ({ flights }) => {
+const FlightResults = ({ flights, onFlightSelect, selectedFlight }) => {
   // Ensure flights is always an array
   const safeFlights = Array.isArray(flights) ? flights : [];
 
@@ -12,16 +12,26 @@ const FlightResults = ({ flights }) => {
       <div className="flex items-center gap-2 mb-4">
         <Plane className="w-6 h-6 text-primary-600" />
         <h3 className="text-xl font-bold text-gray-800">Flight Options</h3>
+        {selectedFlight && (
+          <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded-full">
+            ✓ Flight Selected
+          </span>
+        )}
       </div>
       <div className="space-y-4">
         {safeFlights.map((flight, index) => {
           // Ensure flight object exists with safe defaults
           const safeFlight = flight || {};
+          const isSelected = selectedFlight && selectedFlight.selectedIndex === index;
           
           return (
             <div
               key={index}
-              className="border border-gray-200 rounded-lg p-4 hover:border-primary-500 transition-colors cursor-pointer"
+              className={`border rounded-lg p-4 transition-all cursor-pointer ${
+                isSelected 
+                  ? 'border-green-500 bg-green-50 ring-2 ring-green-200' 
+                  : 'border-gray-200 hover:border-primary-500'
+              }`}
               data-testid={`flight-option-${index}`}
             >
               <div className="flex items-start justify-between mb-3">
@@ -31,6 +41,9 @@ const FlightResults = ({ flights }) => {
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
                       {safeFlight.flight_number || 'FL123'}
                     </span>
+                    {isSelected && (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    )}
                   </div>
                   <div className="flex items-center gap-4 text-sm text-gray-600">
                     <div className="flex items-center gap-1">
@@ -67,15 +80,32 @@ const FlightResults = ({ flights }) => {
                   </div>
                 )}
               </div>
-              <button className="mt-3 w-full btn-secondary text-sm py-2">
-                Select Flight
+              
+              {/* Interactive Selection Button */}
+              <button 
+                onClick={() => onFlightSelect && onFlightSelect(safeFlight, index)}
+                disabled={isSelected}
+                className={`mt-3 w-full text-sm py-2 transition-all ${
+                  isSelected 
+                    ? 'bg-green-500 text-white cursor-default' 
+                    : 'btn-primary hover:bg-primary-700'
+                }`}
+              >
+                {isSelected ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <CheckCircle className="w-4 h-4" />
+                    Flight Selected
+                  </span>
+                ) : (
+                  'Select Flight'
+                )}
               </button>
             </div>
           );
         })}
       </div>
       <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-        📌 <strong>Demo:</strong> These are mock flight results. Production version will integrate with real flight APIs.
+        📌 <strong>Demo:</strong> Select a flight to add it to your trip. You can change your selection anytime.
       </div>
     </div>
   );

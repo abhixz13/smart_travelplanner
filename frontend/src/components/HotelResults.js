@@ -1,7 +1,7 @@
 import React from 'react';
-import { Hotel, MapPin, Star, Wifi, Coffee, DollarSign } from 'lucide-react';
+import { Hotel, MapPin, Star, Wifi, Coffee, DollarSign, CheckCircle } from 'lucide-react';
 
-const HotelResults = ({ hotels }) => {
+const HotelResults = ({ hotels, onHotelSelect, selectedHotel }) => {
   // Ensure hotels is always an array
   const safeHotels = Array.isArray(hotels) ? hotels : [];
 
@@ -12,28 +12,48 @@ const HotelResults = ({ hotels }) => {
       <div className="flex items-center gap-2 mb-4">
         <Hotel className="w-6 h-6 text-primary-600" />
         <h3 className="text-xl font-bold text-gray-800">Hotel Options</h3>
+        {selectedHotel && (
+          <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded-full">
+            ✓ Hotel Selected
+          </span>
+        )}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {safeHotels.map((hotel, index) => {
           // Ensure hotel object exists with safe defaults
           const safeHotel = hotel || {};
           const safeAmenities = Array.isArray(safeHotel.amenities) ? safeHotel.amenities : [];
+          const isSelected = selectedHotel && selectedHotel.selectedIndex === index;
 
           return (
             <div
               key={index}
-              className="border border-gray-200 rounded-lg overflow-hidden hover:border-primary-500 transition-colors cursor-pointer"
+              className={`border rounded-lg overflow-hidden transition-all cursor-pointer ${
+                isSelected 
+                  ? 'border-green-500 bg-green-50 ring-2 ring-green-200' 
+                  : 'border-gray-200 hover:border-primary-500'
+              }`}
               data-testid={`hotel-option-${index}`}
             >
               {/* Hotel Image Placeholder */}
-              <div className="h-40 bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white text-4xl">
+              <div className="h-40 bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white text-4xl relative">
                 🏨
+                {isSelected && (
+                  <div className="absolute top-3 right-3 bg-green-500 rounded-full p-1">
+                    <CheckCircle className="w-4 h-4 text-white" />
+                  </div>
+                )}
               </div>
               
               <div className="p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1">
-                    <h4 className="font-bold text-gray-800 mb-1">{safeHotel.name || 'Hotel Name'}</h4>
+                    <div className="flex items-start gap-2">
+                      <h4 className="font-bold text-gray-800 mb-1 flex-1">{safeHotel.name || 'Hotel Name'}</h4>
+                      {isSelected && (
+                        <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                      )}
+                    </div>
                     <div className="flex items-center gap-1 text-sm text-gray-600 mb-2">
                       <MapPin className="w-3 h-3" />
                       {safeHotel.location || safeHotel.address || 'City Center'}
@@ -71,7 +91,7 @@ const HotelResults = ({ hotels }) => {
                   </div>
                 )}
 
-                <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                <div className="flex items-center justify-between pt-3 border-t border-gray-100 mb-3">
                   <div>
                     <div className="text-xl font-bold text-primary-600 flex items-center">
                       <DollarSign className="w-4 h-4" />
@@ -79,17 +99,34 @@ const HotelResults = ({ hotels }) => {
                     </div>
                     <div className="text-xs text-gray-500">per night</div>
                   </div>
-                  <button className="btn-secondary text-sm px-4 py-2">
-                    View Details
-                  </button>
                 </div>
+
+                {/* Interactive Selection Button */}
+                <button 
+                  onClick={() => onHotelSelect && onHotelSelect(safeHotel, index)}
+                  disabled={isSelected}
+                  className={`w-full text-sm py-2 px-4 transition-all ${
+                    isSelected 
+                      ? 'bg-green-500 text-white cursor-default rounded' 
+                      : 'btn-secondary hover:bg-primary-50'
+                  }`}
+                >
+                  {isSelected ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Hotel Selected
+                    </span>
+                  ) : (
+                    'Select Hotel'
+                  )}
+                </button>
               </div>
             </div>
           );
         })}
       </div>
       <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-        📌 <strong>Demo:</strong> These are mock hotel results. Production version will integrate with real hotel APIs.
+        📌 <strong>Demo:</strong> Select a hotel to add it to your trip. You can change your selection anytime.
       </div>
     </div>
   );

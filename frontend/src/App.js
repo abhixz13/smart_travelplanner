@@ -28,6 +28,11 @@ function App() {
   const [error, setError] = useState(null);
   const [backendAvailable, setBackendAvailable] = useState(true);
 
+  // New state for user selections
+  const [selectedFlight, setSelectedFlight] = useState(null);
+  const [selectedHotel, setSelectedHotel] = useState(null);
+  const [selectedActivities, setSelectedActivities] = useState([]);
+
   // Mock data for tool results (flights, hotels, activities)
   const [toolResults, setToolResults] = useState({
     flights: null,
@@ -44,6 +49,80 @@ function App() {
   const ensureArray = (value) => {
     if (Array.isArray(value)) return value;
     return [];
+  };
+
+  // Handle flight selection
+  const handleFlightSelection = (flight, index) => {
+    setSelectedFlight({ ...flight, selectedIndex: index });
+    
+    // Add confirmation message to chat
+    const confirmationMessage = {
+      type: 'ai',
+      content: `✅ Great choice! I've selected ${flight.airline || 'the'} flight ${flight.flight_number || ''} for $${flight.price || flight.cost || 0}. This flight departs at ${flight.departure_time || 'scheduled time'} and arrives at ${flight.arrival_time || 'destination'}.`,
+      timestamp: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, confirmationMessage]);
+
+    // Update suggestions with next steps
+    setSuggestions([
+      { token: 'hotels', description: 'Browse hotel options' },
+      { token: 'activities', description: 'Find activities' },
+      { token: 'modify-flight', description: 'Choose different flight' }
+    ]);
+  };
+
+  // Handle hotel selection
+  const handleHotelSelection = (hotel, index) => {
+    setSelectedHotel({ ...hotel, selectedIndex: index });
+    
+    // Add confirmation message to chat
+    const confirmationMessage = {
+      type: 'ai',
+      content: `🏨 Excellent! I've noted ${hotel.name || 'this hotel'} as your accommodation. Located in ${hotel.location || 'the city'}, this ${hotel.rating ? hotel.rating + '-star' : ''} hotel costs $${hotel.price_per_night || hotel.price || 0} per night.`,
+      timestamp: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, confirmationMessage]);
+
+    // Update suggestions with next steps
+    setSuggestions([
+      { token: 'activities', description: 'Discover activities' },
+      { token: 'itinerary', description: 'Create detailed itinerary' },
+      { token: 'modify-hotel', description: 'Choose different hotel' }
+    ]);
+  };
+
+  // Handle activity selection
+  const handleActivitySelection = (activity, index) => {
+    const isAlreadySelected = selectedActivities.some(a => a.selectedIndex === index);
+    
+    if (isAlreadySelected) {
+      // Remove activity
+      setSelectedActivities(prev => prev.filter(a => a.selectedIndex !== index));
+      
+      const removalMessage = {
+        type: 'ai',
+        content: `❌ Removed "${activity.name || activity.title || 'activity'}" from your selections.`,
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, removalMessage]);
+    } else {
+      // Add activity
+      setSelectedActivities(prev => [...prev, { ...activity, selectedIndex: index }]);
+      
+      const confirmationMessage = {
+        type: 'ai',
+        content: `🎉 Added "${activity.name || activity.title || 'activity'}" to your trip! This ${activity.duration || 'experience'} costs $${activity.price || 0} and takes place in ${activity.location || 'the area'}.`,
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, confirmationMessage]);
+    }
+
+    // Update suggestions
+    setSuggestions([
+      { token: 'more-activities', description: 'Find more activities' },
+      { token: 'itinerary', description: 'Create final itinerary' },
+      { token: 'summary', description: 'Review selections' }
+    ]);
   };
 
   // API call to send chat message with improved error handling
@@ -70,7 +149,10 @@ function App() {
       const response = await axios.post(`${API_URL}/api/chat`, {
         query,
         thread_id: threadId,
-        user_preferences: {}
+        user_preferences: {},
+        selected_flight: selectedFlight,
+        selected_hotel: selectedHotel,
+        selected_activities: selectedActivities
       }, {
         timeout: 10000 // 10 second timeout
       });
@@ -160,6 +242,11 @@ function App() {
       mockResponse = "I've created a sample 7-day Japan itinerary for you:";
     }
 
+    // Handle selection summaries
+    if (lowerQuery.includes('summary') || lowerQuery.includes('review')) {
+      mockResponse = generateSelectionSummary();
+    }
+
     const aiMessage = {
       type: 'ai',
       content: mockResponse,
@@ -168,6 +255,40 @@ function App() {
     
     setMessages(prev => [...prev, aiMessage]);
     setSuggestions(mockSuggestions);
+  };
+
+  // Generate selection summary
+  const generateSelectionSummary = () => {
+    let summary = "📋 Here's a summary of your current selections:\n\n";
+    
+    if (selectedFlight) {
+      summary += `✈️ **Flight**: ${selectedFlight.airline} ${selectedFlight.flight_number} - $${selectedFlight.price || selectedFlight.cost}\n`;
+      summary += `   ${selectedFlight.departure_time} to ${selectedFlight.arrival_time}\n\n`;
+    }
+    
+    if (selectedHotel) {
+      summary += `🏨 **Hotel**: ${selectedHotel.name} - $${selectedHotel.price_per_night || selectedHotel.price}/night\n`;
+      summary += `   ${selectedHotel.location}${selectedHotel.rating ? ` (${selectedHotel.rating}★)` : ''}\n\n`;
+    }
+    
+    if (selectedActivities.length > 0) {
+      summary += `🎯 **Activities** (${selectedActivities.length} selected):\n`;
+      selectedActivities.forEach(activity => {
+        summary += `   • ${activity.name || activity.title} - $${activity.price || 0}\n`;
+      });
+      summary += '\n';
+    }
+    
+    if (!selectedFlight && !selectedHotel && selectedActivities.length === 0) {
+      summary = "You haven't made any selections yet. Browse through the available options and click 'Select' to add them to your trip!";
+    } else {
+      const totalCost = (selectedFlight?.price || selectedFlight?.cost || 0) + 
+                       (selectedHotel?.price_per_night || selectedHotel?.price || 0) + 
+                       selectedActivities.reduce((sum, activity) => sum + (activity.price || 0), 0);
+      summary += `💰 **Estimated Total**: $${totalCost}`;
+    }
+    
+    return summary;
   };
 
   // API call to handle suggestion selection with error handling
@@ -192,7 +313,10 @@ function App() {
       // Call backend API
       const response = await axios.post(`${API_URL}/api/suggestion`, {
         token,
-        thread_id: threadId
+        thread_id: threadId,
+        selected_flight: selectedFlight,
+        selected_hotel: selectedHotel,
+        selected_activities: selectedActivities
       }, {
         timeout: 10000
       });
@@ -241,12 +365,26 @@ function App() {
         response = 'Here are some hotel recommendations:';
         break;
       case 'activities':
+      case 'more-activities':
         setToolResults(prev => ({ ...prev, activities: generateMockActivities() }));
         response = 'Here are some activity suggestions:';
         break;
       case 'itinerary':
-        setCurrentItinerary(generateMockItinerary());
-        response = 'I\'ve created a sample itinerary for you:';
+        setCurrentItinerary(generateMockItineraryWithSelections());
+        response = 'I\'ve created a personalized itinerary based on your selections:';
+        break;
+      case 'summary':
+        response = generateSelectionSummary();
+        break;
+      case 'modify-flight':
+        setSelectedFlight(null);
+        setToolResults(prev => ({ ...prev, flights: generateMockFlights() }));
+        response = 'Let\'s find you a different flight. Here are the available options:';
+        break;
+      case 'modify-hotel':
+        setSelectedHotel(null);
+        setToolResults(prev => ({ ...prev, hotels: generateMockHotels() }));
+        response = 'No problem! Here are other hotel options to choose from:';
         break;
       default:
         response = 'Here\'s some information about your selection:';
@@ -316,6 +454,10 @@ function App() {
     setSuggestions([]);
     setCurrentItinerary(null);
     setToolResults({ flights: null, hotels: null, activities: null });
+    // Clear selections when switching sessions
+    setSelectedFlight(null);
+    setSelectedHotel(null);
+    setSelectedActivities([]);
     setShowSidebar(false);
   };
 
@@ -474,6 +616,43 @@ function App() {
     ]
   });
 
+  // Generate itinerary with user selections
+  const generateMockItineraryWithSelections = () => {
+    const baseItinerary = generateMockItinerary();
+    
+    // Update with user selections
+    if (selectedFlight) {
+      baseItinerary.flight = selectedFlight;
+      baseItinerary.days[0].activities[0] = {
+        name: `Arrive via ${selectedFlight.airline} ${selectedFlight.flight_number}`,
+        time: selectedFlight.arrival_time
+      };
+    }
+    
+    if (selectedHotel) {
+      baseItinerary.accommodation = selectedHotel;
+      baseItinerary.days.forEach(day => {
+        if (day.accommodation) {
+          day.accommodation = { name: selectedHotel.name };
+        }
+      });
+    }
+    
+    if (selectedActivities.length > 0) {
+      // Add selected activities to the itinerary
+      selectedActivities.forEach((activity, index) => {
+        const dayIndex = index < baseItinerary.days.length ? index : 0;
+        baseItinerary.days[dayIndex].activities.push({
+          name: activity.name || activity.title,
+          time: 'TBD',
+          description: activity.description
+        });
+      });
+    }
+    
+    return baseItinerary;
+  };
+
   return (
     <div className="App min-h-screen bg-gray-50">
       {/* Header */}
@@ -517,6 +696,22 @@ function App() {
               <History className="w-5 h-5 text-gray-600" />
               <h2 className="font-semibold text-gray-800">Trip History</h2>
             </div>
+            
+            {/* Selection Summary in Sidebar */}
+            {(selectedFlight || selectedHotel || selectedActivities.length > 0) && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <h3 className="text-sm font-semibold text-green-800 mb-2">Current Selections</h3>
+                {selectedFlight && (
+                  <div className="text-xs text-green-700 mb-1">✈️ Flight: {selectedFlight.airline}</div>
+                )}
+                {selectedHotel && (
+                  <div className="text-xs text-green-700 mb-1">🏨 Hotel: {selectedHotel.name}</div>
+                )}
+                {selectedActivities.length > 0 && (
+                  <div className="text-xs text-green-700">🎯 Activities: {selectedActivities.length}</div>
+                )}
+              </div>
+            )}
             
             {sessions && sessions.length > 0 ? (
               <div className="space-y-2">
@@ -575,9 +770,27 @@ function App() {
 
             {/* Tool Results Display */}
             <div className="px-4 pb-6">
-              {toolResults.flights && <FlightResults flights={ensureArray(toolResults.flights)} />}
-              {toolResults.hotels && <HotelResults hotels={ensureArray(toolResults.hotels)} />}
-              {toolResults.activities && <ActivityResults activities={ensureArray(toolResults.activities)} />}
+              {toolResults.flights && (
+                <FlightResults 
+                  flights={ensureArray(toolResults.flights)} 
+                  onFlightSelect={handleFlightSelection}
+                  selectedFlight={selectedFlight}
+                />
+              )}
+              {toolResults.hotels && (
+                <HotelResults 
+                  hotels={ensureArray(toolResults.hotels)} 
+                  onHotelSelect={handleHotelSelection}
+                  selectedHotel={selectedHotel}
+                />
+              )}
+              {toolResults.activities && (
+                <ActivityResults 
+                  activities={ensureArray(toolResults.activities)} 
+                  onActivitySelect={handleActivitySelection}
+                  selectedActivities={selectedActivities}
+                />
+              )}
             </div>
           </div>
 
