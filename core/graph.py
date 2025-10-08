@@ -21,7 +21,7 @@ from agents.itinerary_agent import itinerary_agent_node
 logger = logging.getLogger(__name__)
 
 
-def route_after_router(state: GraphState) -> Literal["planner", "flight", "hotel", "activity", "itinerary", "reasoning", "end"]:
+def route_after_router(state: GraphState) -> Literal["destination_planner", "planner", "flight", "hotel", "activity", "itinerary", "reasoning", "end"]:
     """
     Conditional routing based on router's decision.
     
@@ -34,6 +34,7 @@ def route_after_router(state: GraphState) -> Literal["planner", "flight", "hotel
     next_agent = state.get("next_agent", "").upper()
     
     route_map = {
+        "DESTINATION_PLANNER": "destination_planner",
         "PLANNER": "planner",
         "FLIGHT": "flight",
         "HOTEL": "hotel",
