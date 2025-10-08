@@ -154,6 +154,7 @@ def build_graph():
     
     # Add nodes
     graph.add_node("router", router_node)
+    graph.add_node("destination_planner", preplanner_agent_node)
     graph.add_node("planner", planner_node)
     graph.add_node("planner_execution", planner_execution_node)
     graph.add_node("reasoning", reasoning_node)
