@@ -171,12 +171,23 @@ def build_graph():
         "router",
         route_after_router,
         {
+            "destination_planner": "destination_planner",
             "planner": "planner",
             "flight": "flight",
             "hotel": "hotel",
             "activity": "activity",
             "itinerary": "itinerary",
             "reasoning": "reasoning",
+            "end": END
+        }
+    )
+    
+    # Add conditional edges from destination_planner
+    graph.add_conditional_edges(
+        "destination_planner",
+        route_after_destination_planner,
+        {
+            "router": "router",
             "end": END
         }
     )
