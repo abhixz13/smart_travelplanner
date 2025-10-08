@@ -154,12 +154,26 @@ Respond with ONLY valid JSON.
         response = llm.invoke(composition_prompt)
         
         import json
-        itinerary_data = json.loads(response.content.strip())
+        itinerary_content = response.content.strip()
+        
+        # Remove markdown code block fences if present
+        if itinerary_content.startswith("```json"):
+            itinerary_content = itinerary_content[7:]  # Remove ```json
+        if itinerary_content.startswith("```"):
+            itinerary_content = itinerary_content[3:]  # Remove ```
+        if itinerary_content.endswith("```"):
+            itinerary_content = itinerary_content[:-3]  # Remove trailing ```
+        itinerary_content = itinerary_content.strip()
+        
+        itinerary_data = json.loads(itinerary_content)
         
         logger.info(f"Composed itinerary for {len(itinerary_data.get('days', []))} days")
         
         return itinerary_data
         
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to decode JSON from LLM for itinerary: {e}. Content: {itinerary_content if 'itinerary_content' in locals() else 'N/A'}")
+        return create_fallback_itinerary(prefs if 'prefs' in locals() else {})
     except Exception as e:
         logger.error(f"Error composing itinerary: {str(e)}")
         # Return fallback itinerary

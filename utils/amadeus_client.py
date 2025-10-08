@@ -157,28 +157,36 @@ class AmadeusClient:
                 "offers": []
             }
     
-    def search_airport_city(self, keyword: str, max_results: int = 5) -> List[Dict[str, Any]]:
+    def search_airport_city(self, keyword: str, subtype: List[str] = None, max_results: int = 5) -> List[Dict[str, Any]]:
         """
         Airport & City Search API - Search for airports and cities by keyword.
         https://developers.amadeus.com/self-service/category/air/api-doc/airport-and-city-search
         
         Args:
             keyword: Search term (city name, airport name, or code)
+            subtype: List of location types to search for (e.g., ["CITY"], ["AIRPORT"], ["CITY", "AIRPORT"])
             max_results: Maximum number of results
         
         Returns:
             List of matching airports/cities
         """
-        logger.info(f"Searching airports for: {keyword}")
+        logger.info(f"Searching locations for: {keyword}")
         
         try:
             token = self._get_access_token()
             
             endpoint = f"{self.base_url}/v1/reference-data/locations"
             headers = {"Authorization": f"Bearer {token}"}
+            
+            # Build subType parameter
+            if subtype:
+                subtype_str = ",".join(subtype)
+            else:
+                subtype_str = "AIRPORT,CITY"
+            
             params = {
                 "keyword": keyword,
-                "subType": "AIRPORT,CITY",
+                "subType": subtype_str,
                 "page[limit]": max_results
             }
             
@@ -188,11 +196,11 @@ class AmadeusClient:
             data = response.json()
             locations = data.get("data", [])
             
-            logger.info(f"✅ Found {len(locations)} locations")
+            logger.info(f"✅ Found {len(locations)} locations for '{keyword}' (subType: {subtype_str})")
             return locations
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Airport search failed: {e}")
+            logger.error(f"❌ Location search failed for '{keyword}': {e}")
             return []
     
     def flight_inspiration_search(self,

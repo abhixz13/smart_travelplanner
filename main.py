@@ -3,6 +3,9 @@ AI-First Smart Itinerary Planner - Main Orchestrator
 Production-grade multi-agent system for dynamic travel planning
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import logging
 from typing import Dict, Any
 from datetime import datetime
@@ -60,7 +63,7 @@ class ItineraryPlannerSystem:
             
             # Run the state graph with increased recursion limit
             logger.info("Invoking state graph execution")
-            final_state = self.graph.invoke(state, config={"recursion_limit": 50})
+            final_state = self.graph.invoke(state, config={"recursion_limit": 5})
             
             # Store updated state
             self.sessions[thread_id] = final_state
@@ -126,7 +129,7 @@ class ItineraryPlannerSystem:
             
             # Run graph with updated state and increased recursion limit
             logger.info("Re-invoking graph after user selection")
-            final_state = self.graph.invoke(updated_state, config={"recursion_limit": 50})
+            final_state = self.graph.invoke(updated_state, config={"recursion_limit": 5})
             
             # Store updated state
             self.sessions[thread_id] = final_state

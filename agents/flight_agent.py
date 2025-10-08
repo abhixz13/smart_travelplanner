@@ -26,6 +26,70 @@ except Exception as e:
 logger = logging.getLogger(__name__)
 
 
+def convert_country_to_city(destination: str) -> str:
+    """
+    Convert country names to major city names for API searches.
+    
+    Args:
+        destination: Destination string (could be city or country)
+    
+    Returns:
+        Major city name
+    """
+    # Country to major city mapping
+    country_to_city = {
+        "japan": "Tokyo",
+        "china": "Beijing",
+        "south korea": "Seoul",
+        "korea": "Seoul",
+        "thailand": "Bangkok",
+        "singapore": "Singapore",
+        "vietnam": "Hanoi",
+        "indonesia": "Jakarta",
+        "malaysia": "Kuala Lumpur",
+        "philippines": "Manila",
+        "india": "Delhi",
+        "france": "Paris",
+        "italy": "Rome",
+        "spain": "Madrid",
+        "germany": "Berlin",
+        "united kingdom": "London",
+        "uk": "London",
+        "england": "London",
+        "netherlands": "Amsterdam",
+        "greece": "Athens",
+        "portugal": "Lisbon",
+        "switzerland": "Zurich",
+        "austria": "Vienna",
+        "united states": "New York",
+        "usa": "New York",
+        "us": "New York",
+        "america": "New York",
+        "canada": "Toronto",
+        "mexico": "Mexico City",
+        "brazil": "Sao Paulo",
+        "argentina": "Buenos Aires",
+        "australia": "Sydney",
+        "new zealand": "Auckland",
+        "egypt": "Cairo",
+        "south africa": "Johannesburg",
+        "uae": "Dubai",
+        "united arab emirates": "Dubai",
+        "turkey": "Istanbul"
+    }
+    
+    destination_lower = destination.lower().strip()
+    
+    # Check if it's a known country
+    if destination_lower in country_to_city:
+        city = country_to_city[destination_lower]
+        logger.info(f"Converted country '{destination}' to city '{city}'")
+        return city
+    
+    # If not a known country, assume it's already a city
+    return destination
+
+
 def flight_agent_node(state: GraphState) -> Dict[str, Any]:
     """
     Flight agent node for handling flight queries.
@@ -89,16 +153,50 @@ def execute_flight_search(state: GraphState, params: Dict[str, Any]) -> Dict[str
     return_date = params.get("return_date")
     passengers = params.get("passengers", 1)
     
+    # Convert country names to cities (e.g., "Japan" → "Tokyo")
+    destination = convert_country_to_city(destination)
+    
     # Try Amadeus API first
     if AMADEUS_AVAILABLE:
         try:
             amadeus = get_amadeus_client(use_production=False)  # Use test API
             
-            logger.info(f"🔍 Searching Amadeus API: {origin} → {destination}")
+            # Resolve origin and destination to IATA codes
+            origin_code = origin
+            destination_code = destination
+            
+            # Check if origin is not already an IATA code (3 letters)
+            if not (isinstance(origin, str) and len(origin) == 3 and origin.isupper()):
+                logger.info(f"Resolving origin: {origin}")
+                # Try CITY first, then AIRPORT
+                resolved_origin = amadeus.search_airport_city(keyword=origin, subtype=["CITY"], max_results=1)
+                if not resolved_origin:
+                    resolved_origin = amadeus.search_airport_city(keyword=origin, subtype=["AIRPORT"], max_results=1)
+                
+                if resolved_origin and len(resolved_origin) > 0:
+                    origin_code = resolved_origin[0].get("iataCode", origin)
+                    logger.info(f"✅ Resolved origin '{origin}' to IATA code: {origin_code}")
+                else:
+                    logger.warning(f"⚠️ Could not resolve origin '{origin}', using as-is")
+            
+            # Check if destination is not already an IATA code
+            if not (isinstance(destination, str) and len(destination) == 3 and destination.isupper()):
+                logger.info(f"Resolving destination city: {destination}")
+                # Step 1: Use city_search to get city IATA code
+                cities = amadeus.city_search(keyword=destination, max_results=1)
+                
+                if cities and len(cities) > 0:
+                    destination_code = cities[0].get("iataCode", destination)
+                    logger.info(f"✅ Resolved destination '{destination}' to city code: {destination_code}")
+                else:
+                    logger.warning(f"⚠️ City search failed for '{destination}', using as-is")
+                    # Could not resolve - will use original value (may cause 400 error)
+            
+            logger.info(f"🔍 Searching Amadeus API: {origin_code} → {destination_code}")
             
             result = amadeus.search_flights(
-                origin=origin,
-                destination=destination,
+                origin=origin_code,
+                destination=destination_code,
                 departure_date=departure_date,
                 return_date=return_date,
                 adults=passengers,
@@ -160,9 +258,14 @@ def extract_flight_params(state: GraphState) -> Dict[str, Any]:
             extracted_prefs = result
             break
     
+    destination = (extracted_prefs or prefs).get("destination", "Tokyo")
+    
+    # Convert country names to major city names
+    destination = convert_country_to_city(destination)
+    
     params = {
         "origin": "SFO",  # Default, should be extracted from user location
-        "destination": (extracted_prefs or prefs).get("destination", "Tokyo"),
+        "destination": destination,
         "departure_date": (extracted_prefs or prefs).get("start_date"),
         "return_date": (extracted_prefs or prefs).get("end_date"),
         "passengers": (extracted_prefs or prefs).get("travelers", 1),
@@ -228,13 +331,31 @@ def format_flight_response(results: Dict[str, Any]) -> str:
     ]
     
     for i, flight in enumerate(flights[:3], 1):  # Show top 3
-        response_parts.append(
-            f"\n{i}. {flight['airline']} - ${flight['total_price']:.2f}\n"
-            f"   Outbound: {flight['departure_date']} at {flight['outbound_departure']}\n"
-            f"   Return: {flight['return_date']} at {flight['return_departure']}\n"
-            f"   Duration: {flight['duration_outbound']} / {flight['duration_return']}\n"
-            f"   Stops: {flight['stops']}\n"
-        )
+        # Handle both mock data format and Amadeus API format
+        if 'total_price' in flight:
+            # Mock data format
+            response_parts.append(
+                f"\n{i}. {flight['airline']} - ${flight['total_price']:.2f}\n"
+                f"   Outbound: {flight['departure_date']} at {flight['outbound_departure']}\n"
+                f"   Return: {flight['return_date']} at {flight['return_departure']}\n"
+                f"   Duration: {flight['duration_outbound']} / {flight['duration_return']}\n"
+                f"   Stops: {flight['stops']}\n"
+            )
+        else:
+            # Amadeus API format
+            price = flight.get('price', 0)
+            airline = flight.get('airline', 'Unknown')
+            outbound = flight.get('outbound', {})
+            return_flight = flight.get('return', {})
+            
+            response_parts.append(
+                f"\n{i}. {airline} - ${price:.2f} {flight.get('currency', 'USD')}\n"
+                f"   Outbound: {outbound.get('departure_time', 'N/A')}\n"
+                f"   Duration: {outbound.get('duration', 'N/A')}\n"
+                f"   Stops: {outbound.get('stops', 0)}\n"
+            )
+            if return_flight:
+                response_parts.append(f"   Return: {return_flight.get('departure_time', 'N/A')}\n")
     
     if len(flights) > 3:
         response_parts.append(f"\n...and {len(flights) - 3} more options available.")

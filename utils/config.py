@@ -29,7 +29,7 @@ def load_config() -> Dict[str, Any]:
     # Default configuration
     config = {
         "llm": {
-            "model": "gpt-4",
+            "model": os.getenv("LLM_MODEL", "gpt-4o-mini"),
             "temperature": 0.7,
             "max_tokens": 2000
         },

@@ -80,7 +80,18 @@ Respond with ONLY valid JSON, no other text.
         
         # Get plan from LLM
         response = llm.invoke(planning_prompt)
-        plan_json = json.loads(response.content.strip())
+        plan_content = response.content.strip()
+        
+        # Remove markdown code block fences if present
+        if plan_content.startswith("```json"):
+            plan_content = plan_content[7:]  # Remove ```json
+        if plan_content.startswith("```"):
+            plan_content = plan_content[3:]  # Remove ```
+        if plan_content.endswith("```"):
+            plan_content = plan_content[:-3]  # Remove trailing ```
+        plan_content = plan_content.strip()
+        
+        plan_json = json.loads(plan_content)
         
         logger.info(f"Generated plan with {len(plan_json.get('steps', []))} steps")
         
@@ -155,7 +166,18 @@ Respond with ONLY valid JSON.
     
     try:
         response = llm.invoke(extraction_prompt)
-        prefs_dict = json.loads(response.content.strip())
+        prefs_content = response.content.strip()
+        
+        # Remove markdown code block fences if present
+        if prefs_content.startswith("```json"):
+            prefs_content = prefs_content[7:]  # Remove ```json
+        if prefs_content.startswith("```"):
+            prefs_content = prefs_content[3:]  # Remove ```
+        if prefs_content.endswith("```"):
+            prefs_content = prefs_content[:-3]  # Remove trailing ```
+        prefs_content = prefs_content.strip()
+        
+        prefs_dict = json.loads(prefs_content)
         
         return UserPreferences(
             destination=prefs_dict.get("destination"),
@@ -169,6 +191,9 @@ Respond with ONLY valid JSON.
             dietary_restrictions=prefs_dict.get("dietary_restrictions", []),
             mobility_constraints=prefs_dict.get("mobility_constraints")
         )
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to decode JSON from LLM for preferences: {e}. Content: {prefs_content if 'prefs_content' in locals() else 'N/A'}")
+        return UserPreferences()
     except Exception as e:
         logger.error(f"Error extracting preferences: {str(e)}")
         return UserPreferences()

@@ -83,6 +83,10 @@ def execute_hotel_search(state: GraphState, params: Dict[str, Any]) -> Dict[str,
     guests = params.get("guests", 1)
     budget = params.get("budget", "mid-range")
     
+    # Import convert_country_to_city from flight_agent
+    from agents.flight_agent import convert_country_to_city
+    destination = convert_country_to_city(destination)
+    
     # Try Amadeus API first
     if AMADEUS_AVAILABLE and check_in and check_out:
         try:

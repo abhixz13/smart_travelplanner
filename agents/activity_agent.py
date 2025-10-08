@@ -25,6 +25,70 @@ except Exception as e:
 logger = logging.getLogger(__name__)
 
 
+def convert_country_to_city(destination: str) -> str:
+    """
+    Convert country names to major city names for API searches.
+    
+    Args:
+        destination: Destination string (could be city or country)
+    
+    Returns:
+        Major city name
+    """
+    # Country to major city mapping
+    country_to_city = {
+        "japan": "Tokyo",
+        "china": "Beijing",
+        "south korea": "Seoul",
+        "korea": "Seoul",
+        "thailand": "Bangkok",
+        "singapore": "Singapore",
+        "vietnam": "Hanoi",
+        "indonesia": "Jakarta",
+        "malaysia": "Kuala Lumpur",
+        "philippines": "Manila",
+        "india": "Delhi",
+        "france": "Paris",
+        "italy": "Rome",
+        "spain": "Madrid",
+        "germany": "Berlin",
+        "united kingdom": "London",
+        "uk": "London",
+        "england": "London",
+        "netherlands": "Amsterdam",
+        "greece": "Athens",
+        "portugal": "Lisbon",
+        "switzerland": "Zurich",
+        "austria": "Vienna",
+        "united states": "New York",
+        "usa": "New York",
+        "us": "New York",
+        "america": "New York",
+        "canada": "Toronto",
+        "mexico": "Mexico City",
+        "brazil": "Sao Paulo",
+        "argentina": "Buenos Aires",
+        "australia": "Sydney",
+        "new zealand": "Auckland",
+        "egypt": "Cairo",
+        "south africa": "Johannesburg",
+        "uae": "Dubai",
+        "united arab emirates": "Dubai",
+        "turkey": "Istanbul"
+    }
+    
+    destination_lower = destination.lower().strip()
+    
+    # Check if it's a known country
+    if destination_lower in country_to_city:
+        city = country_to_city[destination_lower]
+        logger.info(f"Converted country '{destination}' to city '{city}'")
+        return city
+    
+    # If not a known country, assume it's already a city
+    return destination
+
+
 def activity_agent_node(state: GraphState) -> Dict[str, Any]:
     """
     Activity agent node for handling activity queries.
@@ -81,13 +145,20 @@ def execute_activity_search(state: GraphState, params: Dict[str, Any]) -> Dict[s
     interests = params.get("interests", [])
     budget = params.get("budget", "mid-range")
     
+    # Convert country names to cities (e.g., "Japan" → "Tokyo")
+    destination = convert_country_to_city(destination)
+    
     # Try Amadeus API first
     if AMADEUS_AVAILABLE:
         try:
             amadeus = get_amadeus_client(use_production=False)
             
             # Get city coordinates
-            cities = amadeus.city_search(destination, max_results=1)
+            # Extract just the city name from the destination string (e.g., "Tokyo, Japan" -> "Tokyo")
+            city_name = destination.split(',')[0].strip() if ',' in destination else destination.strip()
+            logger.info(f"Searching cities: {city_name}")
+            
+            cities = amadeus.city_search(keyword=city_name, max_results=1)
             
             if cities and len(cities) > 0:
                 city = cities[0]
@@ -279,8 +350,13 @@ def extract_activity_params(state: GraphState) -> Dict[str, Any]:
     prefs = state.get("user_preferences", {})
     combined_prefs = extracted_prefs or prefs
     
+    destination = combined_prefs.get("destination", "Tokyo")
+    
+    # Convert country names to major city names
+    destination = convert_country_to_city(destination)
+    
     return {
-        "destination": combined_prefs.get("destination", "Tokyo"),
+        "destination": destination,
         "interests": combined_prefs.get("interests", ["culture", "food"]),
         "budget": combined_prefs.get("budget", "mid-range"),
         "duration_days": combined_prefs.get("duration_days", 7)

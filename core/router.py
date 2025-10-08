@@ -45,6 +45,17 @@ def router_node(state: GraphState) -> Dict[str, Any]:
             logger.warning("No messages in state, defaulting to END")
             return {"next_agent": "END"}
         
+        # Check if previous node already set next_agent (e.g., from reasoning node)
+        valid_agents = {"DESTINATION_PLANNER", "PLANNER", "FLIGHT", "HOTEL", "ACTIVITY", "ITINERARY", "REASONING", "END"}
+        if "next_agent" in state and state["next_agent"] != "":
+            suggested_agent = state.get("next_agent", "").upper()
+            if suggested_agent in valid_agents:
+                logger.info(f"Using pre-determined next_agent: {suggested_agent}")
+                return {
+                    "next_agent": suggested_agent,
+                    "messages": state["messages"]
+                }
+        
         # Check if destination planner phase is active or needed
         metadata = state.get("metadata", {})
         user_prefs = state.get("user_preferences", {})
@@ -110,15 +121,16 @@ Decision rules:
 - If user describes requirements (weather, family, budget) without mentioning destination -> DESTINATION_PLANNER
 - For initial trip planning requests with known destination -> PLANNER
 - For specific component requests after a plan exists -> use specialized agent
-- For validation or optimization -> REASONING
+- If user REQUESTS validation --> REASONING
+- If reasoning OUTPUT suggests actions --> use suggested agent
+- For validation or optimization REQUESTS --> REASONING
 """
         
         # Get routing decision
         response = llm.invoke(routing_prompt)
         decision = response.content.strip().upper()
         
-        # Validate decision
-        valid_agents = {"DESTINATION_PLANNER", "PLANNER", "FLIGHT", "HOTEL", "ACTIVITY", "ITINERARY", "REASONING", "END"}
+        # Validate decision (valid_agents already defined above)
         if decision not in valid_agents:
             logger.warning(f"Invalid routing decision: {decision}, defaulting to PLANNER")
             decision = "PLANNER"
