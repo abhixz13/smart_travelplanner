@@ -14,6 +14,94 @@ from utils.config import get_config
 logger = logging.getLogger(__name__)
 
 
+def generate_destination_suggestions(state: GraphState) -> Dict[str, Any]:
+    """
+    Generate destination selection tokens (D1, D2, D3, etc.) for pre-planner phase.
+    
+    Args:
+        state: Current graph state with destination recommendations
+    
+    Returns:
+        Dict with destination selection suggestions
+    """
+    logger.info("Generating destination selection suggestions")
+    
+    try:
+        # Get recommendations from tool_results
+        tool_results = state.get("tool_results", {})
+        recommendations_data = tool_results.get("destination_recommendations", {})
+        recommendations = recommendations_data.get("recommendations", [])
+        
+        if not recommendations:
+            # Fallback suggestions
+            return {
+                "suggestions": [
+                    {
+                        "token": "A1",
+                        "action": "refine_search",
+                        "description": "Refine my destination search",
+                        "priority": 1
+                    }
+                ],
+                "message": AIMessage(content="What would you like to do next?"),
+                "reasoning": "No recommendations available"
+            }
+        
+        # Create D1, D2, D3... tokens for top destinations
+        tokenized_suggestions = []
+        for i, dest in enumerate(recommendations[:5], 1):
+            tokenized_suggestions.append({
+                "token": f"D{i}",
+                "action": "select_destination",
+                "destination": dest.get("destination"),
+                "description": f"Choose {dest.get('destination')}, {dest.get('country')}",
+                "priority": i,
+                "destination_data": dest
+            })
+        
+        # Add "show more" and "refine" options
+        tokenized_suggestions.append({
+            "token": "D99",
+            "action": "refine_search",
+            "description": "Show different options or refine my search",
+            "priority": 99
+        })
+        
+        # Create user-friendly message
+        message_parts = ["\n🌍 Ready to plan your trip! Select a destination:\n"]
+        for sug in tokenized_suggestions[:-1]:  # Exclude the refine option from main list
+            message_parts.append(f"  [{sug['token']}] {sug['description']}")
+        
+        message_parts.append(f"\n  [{tokenized_suggestions[-1]['token']}] {tokenized_suggestions[-1]['description']}")
+        message_parts.append("\n\nSelect an option or tell me more about what you're looking for!")
+        
+        ai_message = AIMessage(
+            content="".join(message_parts),
+            additional_kwargs={
+                "suggestions": tokenized_suggestions,
+                "preplanner_phase": True
+            }
+        )
+        
+        logger.info(f"Generated {len(tokenized_suggestions)} destination selection tokens")
+        
+        return {
+            "suggestions": tokenized_suggestions,
+            "message": ai_message,
+            "reasoning": "Destination selection phase"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating destination suggestions: {str(e)}", exc_info=True)
+        
+        # Return fallback
+        return {
+            "suggestions": [],
+            "message": AIMessage(content="Which destination interests you?"),
+            "reasoning": "Error in destination suggestion generation"
+        }
+
+
 def generate_follow_up_suggestions(state: GraphState) -> Dict[str, Any]:
     """
     Generate dynamic follow-up suggestions based on current state.
