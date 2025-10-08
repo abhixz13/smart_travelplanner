@@ -334,17 +334,25 @@ class SupabaseDB:
         if not messages:
             return []
         
-        # Check if first message is a LangChain message object
-        first_msg = messages[0]
-        if hasattr(first_msg, 'type') and hasattr(first_msg, 'content'):
-            return [{"type": msg.type, "content": msg.content} for msg in messages]
+        converted_messages = []
+        for msg in messages:
+            if hasattr(msg, 'type') and hasattr(msg, 'content'):
+                # Convert LangChain message to dict
+                message_dict = {
+                    "type": msg.type,
+                    "content": msg.content,
+                    "timestamp": getattr(msg, 'timestamp', None),
+                    "metadata": getattr(msg, 'metadata', {})
+                }
+                converted_messages.append(message_dict)
+            elif isinstance(msg, dict) and 'type' in msg and 'content' in msg:
+                # Already a dictionary, use as-is
+                converted_messages.append(msg)
+            else:
+                # Fallback: try to convert to string
+                converted_messages.append({"type": "unknown", "content": str(msg)})
         
-        # If already dictionaries, return as-is
-        if isinstance(first_msg, dict) and 'type' in first_msg and 'content' in first_msg:
-            return messages
-            
-        # Fallback: try to serialize as-is
-        return messages
+        return converted_messages
 
 
 # Global database instance
