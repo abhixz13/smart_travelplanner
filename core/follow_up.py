@@ -260,7 +260,7 @@ def handle_user_selection(state: GraphState, token: str) -> GraphState:
     
     Args:
         state: Current graph state
-        token: Selected suggestion token (e.g., "A1")
+        token: Selected suggestion token (e.g., "A1", "D1")
     
     Returns:
         Updated state ready for graph re-invocation
@@ -285,7 +285,46 @@ def handle_user_selection(state: GraphState, token: str) -> GraphState:
         logger.warning(f"Token not found: {token}")
         return state
     
-    # Map action to agent
+    # Handle destination selection (D tokens)
+    if token.startswith("D") and selected_suggestion["action"] == "select_destination":
+        from core.destination_planner import handle_destination_selection
+        
+        destination_name = selected_suggestion.get("destination", "")
+        logger.info(f"User selected destination: {destination_name}")
+        
+        # Create user message for the selection
+        user_message = HumanMessage(
+            content=f"I'd like to go to {destination_name}",
+            additional_kwargs={"selected_token": token}
+        )
+        
+        # Update state with selection
+        updated_state = handle_destination_selection(state, destination_name)
+        updated_state["messages"] = state["messages"] + [user_message]
+        
+        return updated_state
+    
+    # Handle refine search in preplanner phase
+    if token.startswith("D") and selected_suggestion["action"] == "refine_search":
+        user_message = HumanMessage(
+            content="I'd like to see different destination options",
+            additional_kwargs={"selected_token": token}
+        )
+        
+        return GraphState(
+            messages=state["messages"] + [user_message],
+            plan=state.get("plan"),
+            current_itinerary=state.get("current_itinerary"),
+            user_preferences=state.get("user_preferences", {}),
+            next_agent="",  # Router will decide
+            tool_results=state.get("tool_results", {}),
+            metadata={
+                **state.get("metadata", {}),
+                "preplanner_phase": True
+            }
+        )
+    
+    # Map action to agent (for A tokens)
     action_to_agent = {
         "search_flights": "FLIGHT",
         "search_hotels": "HOTEL",
