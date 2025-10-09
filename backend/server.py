@@ -390,7 +390,7 @@ if __name__ == "__main__":
     import uvicorn
     
     # Get port from environment or use default
-    port = int(os.environ.get("PORT", 8001))
+    port = int(os.environ.get("PORT", 8000))
     
     logger.info(f"Starting AI Travel Planning API on port {port}")
     

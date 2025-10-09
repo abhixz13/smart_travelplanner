@@ -1,327 +1,280 @@
-"""
-Hotel Agent: Handles accommodation search and booking inquiries.
-Specialized agent for hotel-related operations.
-Integrates with Amadeus API for real hotel data.
-"""
+"""Hotel Agent: Handles accommodation search via Amadeus API."""
 
 import logging
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 from langchain_core.messages import AIMessage
-
 from core.state import GraphState
 
-# Try to import Amadeus client (falls back to mock if unavailable)
 try:
     from utils.amadeus_client import get_amadeus_client
     AMADEUS_AVAILABLE = True
-    logger_temp = logging.getLogger(__name__)
-    logger_temp.info("✅ Amadeus API client available for hotels")
 except Exception as e:
     AMADEUS_AVAILABLE = False
-    logger_temp = logging.getLogger(__name__)
-    logger_temp.warning(f"⚠️ Amadeus API unavailable, using mock hotel data: {e}")
+    logging.getLogger(__name__).warning(f"Amadeus API unavailable: {e}")
 
 logger = logging.getLogger(__name__)
 
 
 def hotel_agent_node(state: GraphState) -> Dict[str, Any]:
-    """
-    Hotel agent node for handling accommodation queries.
-    
-    Args:
-        state: Current graph state
-    
-    Returns:
-        Updated state with hotel search results
-    """
-    logger.info("="*60)
-    logger.info("HOTEL AGENT NODE: Processing hotel request")
-    logger.info("="*60)
+    """Process accommodation requests."""
+    logger.info("Processing hotel search request")
     
     try:
         params = extract_hotel_params(state)
-        hotel_results = execute_hotel_search(state, params)
-        response = format_hotel_response(hotel_results)
+        results = execute_hotel_search(state, params)
         
-        return {
-            "messages": state["messages"] + [AIMessage(content=response)],
-            "tool_results": {
-                **state.get("tool_results", {}),
-                "hotel_search": hotel_results
-            }
-        }
+        # Handle Airbnb suggestions
+        if results.get("airbnb_suggestion"):
+            return _update_state(state, results["message"], results)
         
+        # Autonomous mode: select best hotel
+        if state.get("autonomous_execution"):
+            best = select_best_hotel(results["hotels"], params)
+            response = format_best_hotel(best) if best else "No hotels found matching criteria."
+            results["selected_hotel"] = best
+            return _update_state(state, response, results, best)
+        
+        # Standard mode: show all options
+        return _update_state(state, format_hotel_response(results), results)
+            
     except Exception as e:
-        logger.error(f"Error in hotel agent: {str(e)}", exc_info=True)
-        return {
-            "messages": state["messages"] + [
-                AIMessage(content=f"Hotel search error: {str(e)}")
-            ]
-        }
+        logger.error(f"Hotel agent error: {e}", exc_info=True)
+        return _update_state(state, f"Accommodation search error: {e}")
 
 
 def execute_hotel_search(state: GraphState, params: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Execute hotel search with given parameters.
-    
-    Now integrated with Amadeus API for real hotel data!
-    Falls back to mock data if Amadeus API fails.
-    
-    Args:
-        state: Current graph state
-        params: Search parameters
-    
-    Returns:
-        Hotel search results
-    """
-    logger.info(f"Executing hotel search: {params}")
-    
-    destination = params.get("destination", "Tokyo")
-    check_in = params.get("check_in")
-    check_out = params.get("check_out")
-    guests = params.get("guests", 1)
-    budget = params.get("budget", "mid-range")
-    
-    # Import convert_country_to_city from flight_agent
+    """Execute hotel search with Amadeus API or suggest Airbnb."""
     from agents.flight_agent import convert_country_to_city
-    destination = convert_country_to_city(destination)
     
-    # Generate dates if not provided (required for Amadeus API)
-    if not check_in:
-        check_in = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-        logger.info(f"Generated default check-in date: {check_in}")
+    destination = convert_country_to_city(params.get("destination", "Tokyo"))
+    check_in = params.get("check_in") or (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+    check_out = params.get("check_out") or (datetime.strptime(check_in, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
+    guests = params.get("guests", 1)
     
-    if not check_out:
-        check_in_obj = datetime.strptime(check_in, "%Y-%m-%d")
-        check_out = (check_in_obj + timedelta(days=7)).strftime("%Y-%m-%d")
-        logger.info(f"Generated default check-out date: {check_out}")
+    if not AMADEUS_AVAILABLE:
+        return _airbnb_fallback(destination, check_in, check_out, guests, params)
     
-    # Try Amadeus API first
-    if AMADEUS_AVAILABLE:
-        try:
-            amadeus = get_amadeus_client(use_production=False)
-            
-            # Try to get city code from destination
-            # First, search for the city to get IATA code
-            # Extract just the city name from the destination string (e.g., "Tokyo, Japan" -> "Tokyo")
-            city_name = destination.split(',')[0].strip() if ',' in destination else destination.strip()
-            logger.info(f"Searching cities: {city_name}")
-            cities = amadeus.city_search(city_name, max_results=1)
-            
-            if cities and len(cities) > 0:
-                city_code = cities[0].get("iataCode")
+    try:
+        amadeus = get_amadeus_client(use_production=False)
+        city_name = destination.split(',')[0].strip()
+        cities = amadeus.city_search(city_name, max_results=1)
+        
+        if not cities or not cities[0].get("iataCode"):
+            return _airbnb_fallback(destination, check_in, check_out, guests, params, 
+                                   "Destination lacks hotel availability in our system")
+        
+        city_code = cities[0]["iataCode"]
+        logger.info(f"Searching hotels in {city_code} ({destination})")
+        
+        result = amadeus.hotel_search_by_city(
+            city_code=city_code,
+            check_in_date=check_in,
+            check_out_date=check_out,
+            adults=guests,
+            room_quantity=1,
+            max_results=10
+        )
+        
+        if not result.get("success") or not result.get("hotels"):
+            return _airbnb_fallback(destination, check_in, check_out, guests, params,
+                                   result.get('error', 'No hotels available'))
+        
+        formatted = [format_amadeus_hotel(h) for h in result["hotels"]]
+        formatted = [h for h in formatted if h]  # Remove None values
+        
+        logger.info(f"Found {len(formatted)} hotels from Amadeus")
+        return {
+            "hotels": formatted,
+            "source": "amadeus_api",
+            "search_params": params,
+            "timestamp": datetime.now().isoformat()
+        }
                 
-                if city_code:
-                    logger.info(f"🔍 Searching Amadeus hotels in: {city_code} ({destination}) from {check_in} to {check_out}")
-                    
-                    result = amadeus.hotel_search_by_city(
-                        city_code=city_code,
-                        check_in_date=check_in,
-                        check_out_date=check_out,
-                        adults=guests,
-                        room_quantity=1,
-                        max_results=10
-                    )
-                    
-                    if result.get("success") and result.get("hotels"):
-                        # Format Amadeus hotel offers
-                        formatted_hotels = []
-                        
-                        for hotel_offer in result["hotels"]:
-                            formatted = format_amadeus_hotel(hotel_offer)
-                            if formatted:
-                                formatted_hotels.append(formatted)
-                        
-                        logger.info(f"✅ Found {len(formatted_hotels)} real hotels from Amadeus")
-                        
-                        return {
-                            "hotels": formatted_hotels,
-                            "source": "amadeus_api",
-                            "search_params": params,
-                            "timestamp": datetime.now().isoformat()
-                        }
-                    else:
-                        logger.warning(f"Amadeus returned no hotel results: {result.get('error')}")
-                else:
-                    logger.warning(f"No city code found for: {destination}")
-            else:
-                logger.warning(f"City not found: {destination}")
-                
-        except Exception as e:
-            logger.error(f"❌ Amadeus hotel search error: {e}, falling back to mock data")
-    
-    # Fallback to MOCK DATA
-    logger.info("Using mock hotel data (Amadeus unavailable or failed)")
-    mock_hotels = generate_mock_hotels(
-        destination=destination,
-        check_in=check_in,
-        check_out=check_out,
-        guests=guests,
-        budget=budget
-    )
-    
-    return {
-        "hotels": mock_hotels,
-        "source": "mock_data",
-        "search_params": params,
-        "timestamp": datetime.now().isoformat()
-    }
+    except Exception as e:
+        logger.error(f"Amadeus search error: {e}")
+        return _airbnb_fallback(destination, check_in, check_out, guests, params, "API error")
 
 
 def format_amadeus_hotel(hotel_offer: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Format Amadeus hotel offer into simplified structure.
-    
-    Args:
-        hotel_offer: Raw hotel offer from Amadeus API
-    
-    Returns:
-        Formatted hotel data
-    """
+    """Format Amadeus hotel offer into simplified structure."""
     try:
         hotel = hotel_offer.get("hotel", {})
         offers = hotel_offer.get("offers", [])
-        
         if not offers:
             return None
         
-        # Get best offer (first one, as we requested bestRateOnly)
-        best_offer = offers[0]
-        price = best_offer.get("price", {})
-        room = best_offer.get("room", {})
-        
-        # Calculate total price and nights
+        best = offers[0]
+        price = best.get("price", {})
+        room = best.get("room", {})
         total = float(price.get("total", 0))
         
-        # Calculate nights from check-in/check-out dates
+        # Calculate nights
+        nights = 1
         try:
-            check_in_date = best_offer.get("checkInDate", "")
-            check_out_date = best_offer.get("checkOutDate", "")
-            
-            if check_in_date and check_out_date:
-                from datetime import datetime
-                check_in = datetime.strptime(check_in_date, "%Y-%m-%d")
-                check_out = datetime.strptime(check_out_date, "%Y-%m-%d")
-                nights = (check_out - check_in).days
-            else:
-                nights = 1
+            cin = datetime.strptime(best.get("checkInDate", ""), "%Y-%m-%d")
+            cout = datetime.strptime(best.get("checkOutDate", ""), "%Y-%m-%d")
+            nights = max((cout - cin).days, 1)
         except:
-            nights = 1
+            pass
         
-        price_per_night = total / nights if nights > 0 else total
-        
-        formatted = {
+        return {
             "hotel_id": hotel.get("hotelId"),
             "name": hotel.get("name", "Hotel"),
             "destination": hotel.get("cityCode", ""),
-            "rating": float(hotel.get("rating", 0)) if hotel.get("rating") else 4.0,
+            "rating": float(hotel.get("rating", 4.0) or 4.0),
             "type": hotel.get("type", "Hotel"),
-            "price_per_night": price_per_night,
+            "price_per_night": total / nights,
             "total_price": total,
             "currency": price.get("currency", "USD"),
             "amenities": hotel.get("amenities", []),
-            "location": f"{hotel.get('address', {}).get('cityName', '')}",
+            "location": hotel.get('address', {}).get('cityName', ''),
             "distance_to_center": "City Center",
-            "cancellation": best_offer.get("policies", {}).get("cancellation", {}).get("description", "Standard"),
-            "reviews_count": 0,  # Not available in Amadeus
+            "cancellation": best.get("policies", {}).get("cancellation", {}).get("description", "Standard"),
+            "reviews_count": 0,
             "description": room.get("description", {}).get("text", ""),
             "room_type": room.get("typeEstimated", {}).get("category", "Standard")
         }
-        
-        return formatted
-        
     except Exception as e:
-        logger.error(f"Error formatting Amadeus hotel: {e}")
+        logger.error(f"Format error: {e}")
         return None
 
 
 def extract_hotel_params(state: GraphState) -> Dict[str, Any]:
     """Extract hotel search parameters from state."""
-    tool_results = state.get("tool_results", {})
-    extracted_prefs = None
-    
-    for result in tool_results.values():
+    # Get preferences from tool results or user_preferences
+    prefs = {}
+    for result in state.get("tool_results", {}).values():
         if isinstance(result, dict) and "destination" in result:
-            extracted_prefs = result
+            prefs = result
             break
     
-    prefs = state.get("user_preferences", {})
-    combined_prefs = extracted_prefs or prefs
+    if not prefs:
+        prefs = state.get("user_preferences", {})
     
+    # Override with metadata if present
+    metadata = state.get("metadata", {})
+    for key, meta_key in [
+        ("destination", "hotel_destination"),
+        ("start_date", "hotel_start_date"),
+        ("end_date", "hotel_end_date"),
+        ("travelers", "hotel_guests"),
+        ("budget", "hotel_budget"),
+        ("accommodation_type", "hotel_accommodation_type")
+    ]:
+        if metadata.get(meta_key):
+            prefs[key] = metadata[meta_key]
+
     return {
-        "destination": combined_prefs.get("destination", "Tokyo"),
-        "check_in": combined_prefs.get("start_date"),
-        "check_out": combined_prefs.get("end_date"),
-        "guests": combined_prefs.get("travelers", 1),
-        "budget": combined_prefs.get("budget", "mid-range"),
-        "accommodation_type": combined_prefs.get("accommodation_type", "hotel")
+        "destination": prefs.get("destination", "Tokyo"),
+        "check_in": prefs.get("start_date"),
+        "check_out": prefs.get("end_date"),
+        "guests": prefs.get("travelers", 1),
+        "budget": prefs.get("budget", "mid-range"),
+        "accommodation_type": prefs.get("accommodation_type", "hotel")
     }
-
-
-def generate_mock_hotels(destination: str, check_in: str, check_out: str,
-                        guests: int, budget: str) -> List[Dict[str, Any]]:
-    """Generate mock hotel data for MVP."""
-    
-    budget_ranges = {
-        "budget": (50, 100),
-        "mid-range": (100, 250),
-        "luxury": (250, 800)
-    }
-    
-    price_range = budget_ranges.get(budget, (100, 250))
-    
-    hotel_templates = [
-        {"name": "Tokyo Grand Hotel", "rating": 4.5, "type": "Hotel"},
-        {"name": "Sakura Boutique Inn", "rating": 4.2, "type": "Boutique"},
-        {"name": "Imperial Palace Hotel", "rating": 4.8, "type": "Luxury"},
-        {"name": "Central Business Hotel", "rating": 4.0, "type": "Business"}
-    ]
-    
-    mock_hotels = []
-    for i, template in enumerate(hotel_templates):
-        price_per_night = price_range[0] + (i * (price_range[1] - price_range[0]) // len(hotel_templates))
-        
-        mock_hotels.append({
-            "hotel_id": f"HT{2000 + i}",
-            "name": template["name"],
-            "destination": destination,
-            "rating": template["rating"],
-            "type": template["type"],
-            "price_per_night": price_per_night,
-            "total_price": price_per_night * 7,  # Assuming 7 nights
-            "amenities": ["WiFi", "Breakfast", "Gym", "Pool"] if i > 1 else ["WiFi", "Breakfast"],
-            "location": f"{destination} City Center",
-            "distance_to_center": f"{0.5 + (i * 0.3):.1f} km",
-            "cancellation": "Free cancellation" if i < 2 else "Non-refundable",
-            "reviews_count": 500 + (i * 200),
-            "description": f"A wonderful {template['type'].lower()} in the heart of {destination}"
-        })
-    
-    return mock_hotels
 
 
 def format_hotel_response(results: Dict[str, Any]) -> str:
-    """Format hotel results into human-readable response."""
+    """Format hotel results into readable response."""
     hotels = results.get("hotels", [])
-    
     if not hotels:
-        return "No hotels found for your search criteria."
+        return "No hotels found for your criteria."
     
-    response_parts = [
-        f"Found {len(hotels)} accommodation options:\n"
-    ]
-    
-    for i, hotel in enumerate(hotels[:3], 1):
-        response_parts.append(
-            f"\n{i}. {hotel['name']} - ${hotel['price_per_night']:.2f}/night\n"
-            f"   Rating: {hotel['rating']}⭐ ({hotel['reviews_count']} reviews)\n"
-            f"   Location: {hotel['location']} ({hotel['distance_to_center']} from center)\n"
-            f"   Amenities: {', '.join(hotel['amenities'][:3])}\n"
-            f"   Total (7 nights): ${hotel['total_price']:.2f}\n"
+    lines = [f"Found {len(hotels)} accommodation options:\n"]
+    for i, h in enumerate(hotels[:3], 1):
+        lines.append(
+            f"\n{i}. {h['name']} - ${h['price_per_night']:.2f}/night\n"
+            f"   Rating: {h['rating']}⭐ ({h['reviews_count']} reviews)\n"
+            f"   Location: {h['location']} ({h['distance_to_center']} from center)\n"
+            f"   Amenities: {', '.join(h['amenities'][:3])}\n"
+            f"   Total (7 nights): ${h['total_price']:.2f}\n"
         )
     
     if len(hotels) > 3:
-        response_parts.append(f"\n...and {len(hotels) - 3} more options available.")
+        lines.append(f"\n...and {len(hotels) - 3} more options.")
     
-    return "".join(response_parts)
+    return "".join(lines)
+
+
+def format_best_hotel(hotel: Dict[str, Any]) -> str:
+    """Format best hotel selection."""
+    return (
+        f"Best hotel: {hotel['name']} - ${hotel['price_per_night']:.2f}/night\n"
+        f"   Rating: {hotel['rating']}⭐ ({hotel['reviews_count']} reviews)\n"
+        f"   Location: {hotel['location']} ({hotel['distance_to_center']} from center)\n"
+        f"   Amenities: {', '.join(hotel['amenities'][:3])}\n"
+        f"   Total (7 nights): ${hotel['total_price']:.2f}\n"
+        f"   Cancellation: {hotel['cancellation']}\n"
+    )
+
+
+def select_best_hotel(hotels: List[Dict[str, Any]], params: Dict[str, Any]) -> Dict[str, Any]:
+    """Select best hotel based on weighted scoring."""
+    if not hotels:
+        return None
+    
+    # Weight criteria by budget level
+    weights = {
+        "budget": {"price": 0.6, "rating": 0.2, "amenities": 0.1, "location": 0.1},
+        "luxury": {"price": 0.2, "rating": 0.4, "amenities": 0.3, "location": 0.1},
+        "mid-range": {"price": 0.4, "rating": 0.3, "amenities": 0.2, "location": 0.1}
+    }[params.get("budget", "mid-range")]
+    
+    def score_hotel(h: Dict) -> float:
+        score = (
+            weights["price"] * (1 / max(h.get('price_per_night', 1e9), 1)) +
+            weights["rating"] * (h.get('rating', 0) / 5.0) +
+            weights["amenities"] * (len(h.get('amenities', [])) / 10.0) +
+            weights["location"] * (1 if 'center' in h.get('location', '').lower() else 0.5)
+        )
+        
+        # Apply constraints
+        if params.get("max_price") and h.get('price_per_night', 0) > params["max_price"]:
+            score -= 1e9
+        if params.get("min_rating") and h.get('rating', 0) < params["min_rating"]:
+            score -= 1e9
+        if params.get("must_have_amenities"):
+            missing = set(params["must_have_amenities"]) - set(h.get('amenities', []))
+            score -= 1e9 * len(missing)
+        
+        return score
+    
+    best = max(hotels, key=score_hotel)
+    logger.info(f"Selected: {best['name']} - ${best['price_per_night']:.2f}/night")
+    return best
+
+
+def _airbnb_fallback(destination: str, check_in: str, check_out: str, 
+                     guests: int, params: Dict, reason: str = None) -> Dict[str, Any]:
+    """Generate Airbnb suggestion response."""
+    msg = f"Destination '{destination}' "
+    msg += f"({reason}). " if reason else "is unavailable. "
+    msg += "Please search accommodations on Airbnb or other vacation rental platforms."
+    
+    return {
+        "airbnb_suggestion": True,
+        "destination": destination,
+        "check_in": check_in,
+        "check_out": check_out,
+        "guests": guests,
+        "message": msg,
+        "search_params": params,
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+def _update_state(state: GraphState, response: str, 
+                 tool_results: Dict = None, selected: Dict = None) -> Dict[str, Any]:
+    """Helper to update state with response."""
+    update = {"messages": state["messages"] + [AIMessage(content=response)]}
+    
+    if tool_results:
+        update["tool_results"] = {
+            **state.get("tool_results", {}),
+            "hotel_search": tool_results
+        }
+        if selected is not None:
+            update["tool_results"]["selected_hotel"] = selected
+    
+    return update

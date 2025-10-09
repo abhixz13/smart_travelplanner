@@ -91,6 +91,63 @@ def convert_country_to_city(destination: str) -> str:
     return destination
 
 
+def select_best_flight(flights: List[Dict[str, Any]], params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Select the best flight from a list based on user preferences and constraints.
+    
+    Args:
+        flights: List of flight offers
+        params: Search parameters
+    
+    Returns:
+        The best flight offer
+    """
+    logger.info("Selecting best flight from search results...")
+    
+    # Define criteria for selection
+    price_weight = 0.4
+    duration_weight = 0.3
+    stops_weight = 0.2
+    cancellation_weight = 0.1
+    
+    # Initialize scores
+    best_score = float('-inf')
+    best_flight = None
+    
+    for flight in flights:
+        # Calculate weighted score
+        price_score = price_weight * (1 / flight.get('total_price', 1e9)) # Lower price is better
+        duration_score = duration_weight * (1 / (flight.get('duration_outbound', 1e9) + flight.get('duration_return', 1e9))) # Shorter duration is better
+        stops_score = stops_weight * (1 / flight.get('stops', 1e9)) # Fewer stops is better
+        cancellation_score = cancellation_weight * (1 if flight.get('cancellation_policy') == 'Flexible' else 0) # Flexible cancellation is better
+        
+        total_score = price_score + duration_score + stops_score + cancellation_score
+        
+        # Apply user constraints
+        if params.get("max_price") and flight.get('total_price') > params["max_price"]:
+            total_score -= 1e9 # Penalize if price exceeds max_price
+        
+        if params.get("min_duration_outbound") and flight.get('duration_outbound') < params["min_duration_outbound"]:
+            total_score -= 1e9 # Penalize if outbound duration is too short
+        
+        if params.get("max_stops") and flight.get('stops') > params["max_stops"]:
+            total_score -= 1e9 # Penalize if stops exceed max_stops
+        
+        if params.get("cancellation_policy") and flight.get('cancellation_policy') != params["cancellation_policy"]:
+            total_score -= 1e9 # Penalize if cancellation policy doesn't match
+        
+        if total_score > best_score:
+            best_score = total_score
+            best_flight = flight
+    
+    if best_flight:
+        logger.info(f"Selected best flight: {best_flight['airline']} - ${best_flight['total_price']:.2f}")
+        return best_flight
+    else:
+        logger.warning("No flight found that meets all criteria.")
+        return None
+
+
 @time_execution()
 def flight_agent_node(state: GraphState) -> Dict[str, Any]:
     """
@@ -116,13 +173,37 @@ def flight_agent_node(state: GraphState) -> Dict[str, Any]:
         # Format response
         response = format_flight_response(flight_results)
         
-        return {
-            "messages": state["messages"] + [AIMessage(content=response)],
-            "tool_results": {
-                **state.get("tool_results", {}),
-                "flight_search": flight_results
+        # Check for autonomous execution mode
+        if state.get("autonomous_execution", False):
+            selected_flight = select_best_flight(flight_results["flights"], params)
+            if selected_flight:
+                response += f"\n\nAutonomous Selection: Selected flight - {selected_flight['airline']} - ${selected_flight['total_price']:.2f}"
+                return {
+                    "messages": state["messages"] + [AIMessage(content=response)],
+                    "tool_results": {
+                        **state.get("tool_results", {}),
+                        "flight_search": flight_results,
+                        "selected_flight": selected_flight
+                    }
+                }
+            else:
+                response += "\n\nAutonomous Selection: No flight found that meets all criteria."
+                return {
+                    "messages": state["messages"] + [AIMessage(content=response)],
+                    "tool_results": {
+                        **state.get("tool_results", {}),
+                        "flight_search": flight_results,
+                        "selected_flight": None
+                    }
+                }
+        else:
+            return {
+                "messages": state["messages"] + [AIMessage(content=response)],
+                "tool_results": {
+                    **state.get("tool_results", {}),
+                    "flight_search": flight_results
+                }
             }
-        }
         
     except Exception as e:
         logger.error(f"Error in flight agent: {str(e)}", exc_info=True)
@@ -240,23 +321,23 @@ def execute_flight_search(state: GraphState, params: Dict[str, Any]) -> Dict[str
                 logger.warning(f"Amadeus API returned no results: {result.get('error')}")
                 
         except Exception as e:
-            logger.error(f"❌ Amadeus API error: {e}, falling back to mock data")
-    
-    # Fallback to MOCK DATA
-    logger.info("Using mock flight data (Amadeus unavailable or failed)")
-    mock_flights = generate_mock_flights(
-        origin=origin,
-        destination=destination,
-        departure_date=departure_date,
-        return_date=return_date,
-        passengers=passengers
-    )
-    
+            logger.error(f"❌ Amadeus API error: {e}, cannot search flights.")
+            return {
+                "flights": [],
+                "source": "amadeus_api_error",
+                "search_params": params,
+                "timestamp": datetime.now().isoformat(),
+                "error": str(e)
+            }
+
+    # If Amadeus is not available or failed, return empty results
+    logger.warning("Amadeus API unavailable or failed to find flights. Returning no flight options.")
     return {
-        "flights": mock_flights,
-        "source": "mock_data",
+        "flights": [],
+        "source": "no_flights_available",
         "search_params": params,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "error": "No flight options available due to API issue or no results."
     }
 
 
@@ -272,6 +353,11 @@ def extract_flight_params(state: GraphState) -> Dict[str, Any]:
         if isinstance(result, dict) and "destination" in result:
             extracted_prefs = result
             break
+    
+    # Check metadata for flight parameters
+    metadata = state.get("metadata", {})
+    if metadata.get("flight_params"):
+        extracted_prefs = metadata["flight_params"]
     
     destination = (extracted_prefs or prefs).get("destination", "Tokyo")
     
@@ -296,42 +382,6 @@ def extract_flight_params(state: GraphState) -> Dict[str, Any]:
         params["return_date"] = (departure + timedelta(days=duration)).strftime("%Y-%m-%d")
     
     return params
-
-
-def generate_mock_flights(origin: str, destination: str, 
-                         departure_date: str, return_date: str,
-                         passengers: int) -> List[Dict[str, Any]]:
-    """
-    Generate mock flight data for MVP.
-    
-    TODO: Replace with real flight API integration.
-    """
-    airlines = ["United Airlines", "ANA", "Japan Airlines", "Delta"]
-    
-    mock_flights = []
-    for i, airline in enumerate(airlines):
-        mock_flights.append({
-            "flight_id": f"FL{1000 + i}",
-            "airline": airline,
-            "origin": origin,
-            "destination": destination,
-            "departure_date": departure_date,
-            "return_date": return_date,
-            "outbound_departure": "10:30 AM",
-            "outbound_arrival": "2:30 PM (+1 day)",
-            "return_departure": "4:00 PM",
-            "return_arrival": "6:00 PM",
-            "duration_outbound": "11h 00m",
-            "duration_return": "10h 00m",
-            "stops": 0 if i < 2 else 1,
-            "price_per_passenger": 850 + (i * 150),
-            "total_price": (850 + (i * 150)) * passengers,
-            "cabin_class": "Economy",
-            "baggage": "2 checked bags included",
-            "cancellation_policy": "Flexible" if i == 0 else "Standard"
-        })
-    
-    return mock_flights
 
 
 def format_flight_response(results: Dict[str, Any]) -> str:
